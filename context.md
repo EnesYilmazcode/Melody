@@ -1,4 +1,4 @@
-# PROJECT BRIEF — "Local YouTube Audio Player" (personal iPhone music app)
+# PROJECT BRIEF: "Local YouTube Audio Player" (personal iPhone music app)
 
 > Paste this whole file into Claude Code (or a new chat) as the starting context.
 > It contains the goal, the locked-in architecture, decisions already made, the iOS
@@ -9,7 +9,7 @@
 
 ## 0. Who I am / how I work (so you calibrate)
 
-- I'm Enes — CS & Engineering junior at Ohio State, strong with React, Python, FastAPI, JS/TS.
+- I'm Enes, CS & Engineering junior at Ohio State, strong with React, Python, FastAPI, JS/TS.
 - I learn best from concrete, copy-paste-ready code WITH explanations of *why* (architecture, tradeoffs), not just *how*.
 - No fluff. Practical, implementation-focused. Fast-paced and structured.
 - I've shipped React + Firebase projects before (a 3D circuit designer called Sparky, a text-to-3D engine called Kinetik), so assume working knowledge of React, hooks, Vite, GitHub, deploying static sites.
@@ -34,11 +34,11 @@ Think: a makeshift, personal Spotify but the source is regular YouTube videos, a
 stored locally, free, no App Store publishing.
 
 NOTE: I understand the YouTube ToS implications and am taking full responsibility/caution.
-Do NOT spend output re-explaining ToS — I've got it. Focus on building.
+Do NOT spend output re-explaining ToS. I've got it. Focus on building.
 
 ---
 
-## 2. Architecture (LOCKED IN — don't re-litigate unless something's technically wrong)
+## 2. Architecture (LOCKED IN: don't re-litigate unless something's technically wrong)
 
 The hard iOS reality that forces this design:
 - A web page / PWA **cannot run yt-dlp** and **cannot fetch YouTube's signed media URLs**
