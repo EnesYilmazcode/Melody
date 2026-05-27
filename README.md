@@ -92,17 +92,17 @@ Then, for each song:
 
 1. In the YouTube app: **Share → Copy Link**.
 2. In Melody → **Search** → tap the **paste** icon. It detects the link and **copies a download command** to your clipboard.
-3. Switch to **a-Shell**, paste, and run — it downloads the `.m4a`.
+3. Switch to **a-Shell**, paste, and run. It downloads the `.m4a`.
 4. Back in Melody → **Library → Import** → pick the file from **On My iPhone → a-Shell**.
 
 That's it: the song is now in your library with cover art and lyrics, playable offline forever.
 
-> yt-dlp occasionally breaks when YouTube changes things — fix with `pip install -U yt-dlp`.
+> yt-dlp occasionally breaks when YouTube changes things. Fix it with `pip install -U yt-dlp`.
 
 ## Known iOS limitations (by design)
 
 - Background audio stops if you **force-quit** the PWA (fine for screen-off-in-pocket listening).
-- The home-screen icon is cached by iOS — to refresh it after changes, remove and re-add the app.
+- The home-screen icon is cached by iOS. To refresh it after changes, remove and re-add the app.
 
 ## Project layout
 
