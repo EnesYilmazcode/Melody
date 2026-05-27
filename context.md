@@ -96,14 +96,14 @@ Division of labor:
 
 - **Framework:** React + Vite. (I know React; cleaner code.)
 - **Hosting:** GitHub Pages (free, HTTPS, I already use GitHub as EnesYilmazCode). Firebase
-  Hosting is an acceptable alt but NOT required. No Firebase backend at all — no Firestore,
+  Hosting is an acceptable alt but NOT required. No Firebase backend at all, no Firestore,
   no Auth, no Storage. Everything is local to the phone.
 - **YouTube search source:** **YouTube Data API v3** (free key via Google Cloud, fast,
   returns thumbnails + titles, 100 searches/day quota = plenty for personal use). yt-dlp's
   own `ytsearch` is the fallback only if I refuse to set up a Google Cloud key.
-- **Audio format:** m4a (AAC) — small, native to iOS.
+- **Audio format:** m4a (AAC), small, native to iOS.
 - **Catalog/state storage in PWA:** IndexedDB for the catalog + playlists + stars (NOT for
-  the audio blobs — those stay in Files to avoid the ~1GB IndexedDB eviction ceiling).
+  the audio blobs, those stay in Files to avoid the ~1GB IndexedDB eviction ceiling).
 - **Background audio:** Media Session API. Accepted limitation: audio stops if I FORCE-QUIT
   the PWA (fine for screen-off-in-pocket listening; not trying to beat native apps here).
 
@@ -115,11 +115,11 @@ Division of labor:
    installable via Add to Home Screen. Localhost is exempt for dev.
 2. PWA **cannot silently trigger a download and get a callback**. The handoff to the
    Shortcut is one-directional; after download I tap back into the PWA and it re-scans the
-   catalog. No live progress bar across the boundary — accept this.
+   catalog. No live progress bar across the boundary, accept this.
 3. PWA **cannot freely read arbitrary Files-app folders** (sandbox). Audio is loaded via
    user file-picker grant or a file-handle flow, OR we accept importing once. Flag the
    cleanest approach for current iOS when we get there.
-4. IndexedDB/Cache storage in iOS PWAs is **capped (~1GB, evictable)** — that's exactly why
+4. IndexedDB/Cache storage in iOS PWAs is **capped (~1GB, evictable)**. That's exactly why
    audio lives in Files, not in the PWA.
 5. **Media Session API** lock-screen controls work only while the PWA process is alive.
 6. **yt-dlp breaks periodically** when YouTube changes things; fix is `yt-dlp -U`. Build an
