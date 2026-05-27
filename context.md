@@ -129,37 +129,37 @@ Division of labor:
 
 ## 5. Build order (follow this)
 
-**Phase 1 — App shell + installability (laptop)**
+**Phase 1: App shell + installability (laptop)**
 - Vite + React project scaffold.
 - `manifest.json`, icons, service worker → confirm it's installable / passes Lighthouse PWA.
 - Basic layout/nav, dark UI.
 
-**Phase 2 — Library + catalog + fuzzy search (laptop)**
+**Phase 2: Library + catalog + fuzzy search (laptop)**
 - Define the catalog schema (track: id, title, artist/uploader, duration, thumbnailUrl,
   filePath, dateAdded, starred, playCount).
 - Seed with 3–5 sample MP3/m4a files in a local folder to develop against.
 - IndexedDB layer (suggest `idb` or `Dexie`).
 - Real-time fuzzy search (suggest Fuse.js) over the catalog as I type.
 
-**Phase 3 — Player + organization (laptop)**
+**Phase 3: Player + organization (laptop)**
 - HTML5 `<audio>` player: play/pause, scrub, **loop/repeat**, next/prev.
 - **Star/favorite** toggle persisted to IndexedDB.
 - **Playlists**: create, add/remove tracks, reorder; persisted.
 - **Media Session API**: title/artist/artwork + lock-screen play/pause/next/prev.
 
-**Phase 4 — YouTube search integration (laptop, needs API key)**
+**Phase 4: YouTube search integration (laptop, needs API key)**
 - "Search YouTube" UI when a query has no good local match.
 - Call YouTube Data API v3 (search.list), render results (thumb + title + channel).
 - On tap: stage the video for download (hand off to the phone pipeline).
 - Keep the API key out of source (env var); note GitHub Pages is static so the key is
-  client-side — discuss how to restrict the key (HTTP referrer restriction) since there's
+  client-side, so discuss how to restrict the key (HTTP referrer restriction) since there's
   no server to hide it. THIS IS AN IMPORTANT SECURITY NOTE TO RAISE WITH ME.
 
-**Phase 5 — Deploy + install (laptop → phone)**
+**Phase 5: Deploy + install (laptop → phone)**
 - Build, push, GitHub Pages, HTTPS URL.
 - iPhone Safari → Add to Home Screen → confirm it runs as an app.
 
-**Phase 6 — Download engine (PHONE ONLY, do last)**
+**Phase 6: Download engine (PHONE ONLY, do last)**
 - a-Shell: `pip install -U yt-dlp`.
 - Download script: takes a video ID/URL, runs
   `yt-dlp -x --audio-format m4a -o "<id>.%(ext)s"`, writes sidecar metadata JSON,
@@ -198,7 +198,7 @@ Division of labor:
 
 ---
 
-## 8. Stretch ideas (NOT now — note for later)
+## 8. Stretch ideas (NOT now, note for later)
 
 - Search-as-you-type that blends local + YouTube results in one list.
 - Auto-generated playlists (recently added, most played, starred).
