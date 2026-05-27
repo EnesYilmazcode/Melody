@@ -2,9 +2,9 @@
 
 # 🎧 Melody
 
-**A personal, offline-first music player for iPhone — built because the NYC subway has terrible wifi.**
+**A personal, offline-first music player for iPhone. Built because the NYC subway has terrible wifi.**
 
-Paste a YouTube link, download the audio on-device, and play it locally with cover art, synced lyrics, playlists, and lock-screen controls. No account, no streaming, no app store — just a web app you add to your home screen.
+Paste a YouTube link, download the audio on-device, and play it locally with cover art, synced lyrics, playlists, and lock-screen controls. No account, no streaming, no app store. Just a web app you add to your home screen.
 
 </div>
 
