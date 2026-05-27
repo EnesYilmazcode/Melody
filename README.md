@@ -24,15 +24,15 @@ I wanted Spotify-style convenience for music I already know I want, that keeps p
 
 ## Features
 
-- 📥 **Add by YouTube link** — paste a share link; Melody recognizes it and hands you a ready-to-run download command.
-- 💾 **Fully offline** — audio is stored on-device (IndexedDB); plays with no network.
-- 🎵 **Real player** — play/pause, scrub, next/prev, and three loop modes (off / repeat-all / repeat-one).
-- ⭐ **Favorites & playlists** — star tracks, build playlists, reorder, shuffle.
-- 🖼️ **Cover art** — pulled from the YouTube thumbnail and cached for offline.
-- 🎤 **Synced lyrics** — fetched from [LRCLIB](https://lrclib.net), highlighted line-by-line as the song plays, cached for offline. One tap to re-search if a match is off.
-- 🔒 **Lock-screen controls + background audio** via the Media Session API.
+- 📥 **Add by YouTube link**: paste a share link; Melody recognizes it and hands you a ready-to-run download command.
+- 💾 **Fully offline**: audio is stored on-device (IndexedDB) and plays with no network.
+- 🎵 **Real player**: play/pause, scrub, next/prev, and three loop modes (off, repeat-all, repeat-one).
+- ⭐ **Favorites and playlists**: star tracks, build playlists, reorder, shuffle.
+- 🖼️ **Cover art**: pulled from the YouTube thumbnail and cached for offline.
+- 🎤 **Synced lyrics**: fetched from [LRCLIB](https://lrclib.net), highlighted line-by-line as the song plays, cached for offline. One tap to re-search if a match is off.
+- 🔒 **Lock-screen controls and background audio** via the Media Session API.
 - 🔎 **Fuzzy search** over your local library.
-- 📱 **Installable PWA** — Add to Home Screen and it runs fullscreen like a native app.
+- 📱 **Installable PWA**: Add to Home Screen and it runs fullscreen like a native app.
 
 ## How it works
 
