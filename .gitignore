@@ -1,0 +1,13 @@
+node_modules
+dist
+dev-dist
+dist-ssr
+*.local
+*.log
+/screenshots
+.env
+.env.*
+!.env.example
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
