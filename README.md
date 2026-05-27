@@ -12,7 +12,7 @@ Paste a YouTube link, download the audio on-device, and play it locally with cov
 
 ## Why this exists
 
-I wanted Spotify-style convenience for music I already know I want, that keeps playing underground where streaming apps choke. The catch: a web app **can't** download YouTube audio (signed URLs + CORS), and iOS **can't** run a downloader inside a browser. So Melody splits the job across three pieces that hand off to each other — a genuinely interesting little systems-integration problem.
+I wanted Spotify-style convenience for music I already know I want, that keeps playing underground where streaming apps choke. The catch: a web app **can't** download YouTube audio (signed URLs and CORS get in the way), and iOS **can't** run a downloader inside a browser. So Melody splits the work across three pieces that hand off to each other. Figuring out that hand-off was most of the fun.
 
 > **Note:** This is a personal project for my own offline listening. It is not for distribution, and you're responsible for respecting YouTube's Terms of Service and copyright where you live.
 
