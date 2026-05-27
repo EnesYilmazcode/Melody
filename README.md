@@ -47,11 +47,11 @@ A browser can't download YouTube audio or run yt-dlp, so the work is split:
 └─────────────────────────────┘      import the downloaded file   └──────────────────────────┘
 ```
 
-- **Melody (PWA)** — everything you see and feel. ~90% of the code. React + Vite.
-- **a-Shell + yt-dlp** — a free on-device terminal that actually downloads the audio (no server, no datacenter IP getting bot-blocked).
-- **IndexedDB** — imported audio bytes + the catalog, playlists, favorites, and cached lyrics all live locally.
+- **Melody (PWA)**: the whole interface and about 90% of the code. React + Vite.
+- **a-Shell + yt-dlp**: a free on-device terminal that does the actual downloading (no server, and no datacenter IP getting bot-blocked).
+- **IndexedDB**: imported audio bytes plus the catalog, playlists, favorites, and cached lyrics all live locally.
 
-iOS has no File System Access API, so audio is **imported once via the file picker into IndexedDB**, then played back from an object URL — which is why it survives offline.
+iOS has no File System Access API, so audio is **imported once via the file picker into IndexedDB**, then played back from an object URL. That is why it survives offline.
 
 ## Tech stack
 
