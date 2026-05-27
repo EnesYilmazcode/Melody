@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <!-- ?v=2 forces iOS to re-fetch the icon; it caches apple-touch-icon hard
+         by URL and won't refresh on re-add otherwise. Bump on future changes. -->
+    <link rel="apple-touch-icon" href="/apple-touch-icon-180x180.png?v=3" />
+
+    <!-- viewport-fit=cover + the env(safe-area-*) CSS lets the app draw under
+         the iPhone notch/home-indicator so it feels native fullscreen. -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no"
+    />
+
+    <!-- iOS-specific: render as a standalone app, dark status bar, app title. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Melody" />
+    <meta name="theme-color" content="#110f0c" />
+
+    <title>Melody</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
