@@ -2,11 +2,16 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
-// NOTE on `base`: GitHub Pages serves a project repo at
-//   https://<user>.github.io/melody/  (a SUBPATH, not the domain root).
-// If base is wrong, the deployed app loads a blank white screen because the
-// JS/CSS asset URLs 404. So we set base to '/melody/' for production builds
-// and '/' for local dev. Change 'melody' if you name the repo differently.
+// NOTE on `base`: production is served from a SUBPATH, so the built asset URLs
+// must be prefixed with it or the deployed app loads a blank white screen (the
+// JS/CSS 404). The live deploy is Firebase via `npm run deploy:sparky`, hosted
+// at https://sparkylab.web.app/melody/ — so '/melody/' (lowercase) is correct.
+// Local dev uses '/'.
+//
+// ⚠️ If you ever switch to GitHub Pages instead, the path is case-SENSITIVE and
+// preserves the repo name: https://enesyilmazcode.github.io/Melody/ — you'd
+// need base '/Melody/' (capital M), or rename the repo to lowercase. Don't
+// change this to '/Melody/' while deploying to Firebase — that would break it.
 export default defineConfig(({ command }) => ({
   base: command === 'build' ? '/melody/' : '/',
   plugins: [
