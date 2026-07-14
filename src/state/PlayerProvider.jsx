@@ -105,16 +105,34 @@ export function PlayerProvider({ children }) {
     if (audioRef.current) audioRef.current.loop = loopMode === 'one'
   }, [loopMode])
 
+  // Resume playback. Idempotent (play() while already playing is a no-op), so
+  // it can never invert iOS's own control of the element — this is what makes
+  // AirPods/lock-screen resume reliable. On reject we sync isPlaying=false so
+  // mediaSession.playbackState doesn't drift (which would route the wrong
+  // remote action next press).
+  const play = useCallback(() => {
+    const audio = audioRef.current
+    if (!audio || !current) return
+    audio.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false))
+  }, [current])
+
+  // Pause playback. Idempotent for the same reason.
+  const pause = useCallback(() => {
+    const audio = audioRef.current
+    if (!audio) return
+    audio.pause()
+    setIsPlaying(false)
+  }, [])
+
+  // In-app play/pause button: toggles based on the element's live state. The
+  // MediaSession remote actions must NOT use this — they get the dedicated,
+  // semantic play/pause handlers above.
   const toggle = useCallback(() => {
     const audio = audioRef.current
     if (!audio || !current) return
-    if (audio.paused) {
-      audio.play().then(() => setIsPlaying(true)).catch(() => {})
-    } else {
-      audio.pause()
-      setIsPlaying(false)
-    }
-  }, [current])
+    if (audio.paused) play()
+    else pause()
+  }, [current, play, pause])
 
   const next = useCallback(() => {
     setIndex((i) => {
@@ -189,8 +207,8 @@ export function PlayerProvider({ children }) {
         ? [{ src: current.thumbnailUrl, sizes: '512x512', type: 'image/png' }]
         : [],
     })
-    navigator.mediaSession.setActionHandler('play', toggle)
-    navigator.mediaSession.setActionHandler('pause', toggle)
+    navigator.mediaSession.setActionHandler('play', play)
+    navigator.mediaSession.setActionHandler('pause', pause)
     navigator.mediaSession.setActionHandler('previoustrack', prev)
     navigator.mediaSession.setActionHandler('nexttrack', next)
     try {
@@ -200,7 +218,7 @@ export function PlayerProvider({ children }) {
     } catch {
       /* 'seekto' unsupported on some browsers — non-fatal */
     }
-  }, [current, toggle, prev, next, seek])
+  }, [current, play, pause, prev, next, seek])
 
   useEffect(() => {
     if ('mediaSession' in navigator) {
