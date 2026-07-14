@@ -26,11 +26,18 @@
 html,
 body,
 #root {
-  /* dvh = the *real* visible height on iOS standalone PWAs. Plain 100%/vh can
-     resolve shorter than the screen, which left the bottom nav floating above
-     a black gap. dvh + an in-flow dock pins the nav to the true bottom. */
+  /* Pin the app to the true VISIBLE viewport on iOS. Plain vh/dvh can
+     OVER-resolve at first paint — iOS measures the toolbar-hidden height before
+     layout settles — making the page taller than what's actually visible.
+     Because the body wasn't scroll-locked (see below), that overflow became
+     scrollable and the in-flow dock started just below the fold until a swipe
+     forced a viewport recompute. svh is the *small* viewport (always <=
+     visible), so the dock is guaranteed on screen; in an installed standalone
+     PWA svh == dvh, so there's no black-gap regression. vh/dvh stay as
+     fallbacks for engines without svh. */
   height: 100vh;
   height: 100dvh;
+  height: 100svh;
   margin: 0;
 }
 
@@ -42,6 +49,15 @@ body {
   overscroll-behavior: none;
   -webkit-user-select: none;
   user-select: none;
+  /* Lock the document so ONLY .content scrolls — belt-and-suspenders with the
+     svh height above. Even if the viewport height is momentarily miscalculated,
+     the page itself can't scroll, so the dock can never be pushed below the
+     fold. The inner .content keeps its own overflow-y:auto and scrolls fine. */
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  overflow: hidden;
 }
 
 .app {
