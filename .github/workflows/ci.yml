@@ -1,0 +1,30 @@
+name: CI
+
+# Build check on every PR and on pushes to main. There's no test suite (by
+# design), so a clean production build is the gate: it catches syntax errors,
+# bad imports, and anything that would break the deployed app.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      # Playwright is only used by local dev scripts (screenshots/smoke checks),
+      # never in the build — skip its multi-hundred-MB browser download in CI.
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
