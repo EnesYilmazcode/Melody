@@ -1,3 +1,5 @@
+import { useState, useEffect } from 'react'
+
 // Square artwork. Uses the YouTube thumbnail when present; otherwise renders a
 // deterministic gradient tile (same track → same colors) so the library still
 // looks intentional for the sample tones and any thumbnail-less tracks.
@@ -15,8 +17,22 @@ export function warmGlow(id) {
 
 export default function Artwork({ track, size = 48, radius = 8 }) {
   const style = { width: size, height: size, borderRadius: radius }
-  if (track?.thumbnailUrl) {
-    return <img className="artwork" src={track.thumbnailUrl} alt="" style={style} />
+  // A present-but-broken thumbnail URL (expired/offline/deleted video) should
+  // fall back to the gradient tile, not the browser's broken-image glyph.
+  // Reset the flag when the URL changes since this instance is reused in lists.
+  const [failed, setFailed] = useState(false)
+  useEffect(() => setFailed(false), [track?.thumbnailUrl])
+
+  if (track?.thumbnailUrl && !failed) {
+    return (
+      <img
+        className="artwork"
+        src={track.thumbnailUrl}
+        alt=""
+        style={style}
+        onError={() => setFailed(true)}
+      />
+    )
   }
   // Keep the hue in a warm band (deep amber → sienna → olive) and low-ish
   // saturation so placeholders stay cohesive with the palette — never rainbow.
