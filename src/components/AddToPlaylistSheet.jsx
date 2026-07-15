@@ -4,6 +4,7 @@ import { usePlaylists } from '../state/useLibrary'
 import { usePlayer } from '../state/PlayerProvider'
 import { addToPlaylist, createPlaylist, toggleStar, deleteTrack } from '../lib/db'
 import PromptModal from './PromptModal'
+import ConfirmModal from './ConfirmModal'
 
 // Track actions sheet (opened from a TrackRow's ⋯). Quick playback actions on
 // top (Play next / Add to queue / Favorite), then the "add to playlist" picker.
@@ -12,6 +13,7 @@ export default function AddToPlaylistSheet() {
   const playlists = usePlaylists()
   const { playNext, addToQueue } = usePlayer()
   const [creating, setCreating] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   if (!addTarget) return null
 
   const close = closeAddToPlaylist
@@ -55,7 +57,7 @@ export default function AddToPlaylistSheet() {
           {addTarget.srcType === 'idb' && (
             <button
               className="sheet__item sheet__item--danger"
-              onClick={() => { deleteTrack(addTarget.id); close() }}
+              onClick={() => setConfirmDelete(true)}
             >
               <span>Delete from library</span>
               <svg viewBox="0 0 18 18" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M3 5h12M7 5V3h4v2M6 5l.8 10h4.4L12 5" /></svg>
@@ -76,6 +78,20 @@ export default function AddToPlaylistSheet() {
             setCreating(false)
             await addToList(id)
           }}
+        />
+      )}
+
+      {confirmDelete && (
+        <ConfirmModal
+          title="Delete from library?"
+          message={`"${addTarget.title}" and its downloaded audio will be removed. This can't be undone.`}
+          confirmLabel="Delete"
+          onConfirm={async () => {
+            await deleteTrack(addTarget.id)
+            setConfirmDelete(false)
+            close()
+          }}
+          onClose={() => setConfirmDelete(false)}
         />
       )}
     </>
