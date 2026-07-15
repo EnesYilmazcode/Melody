@@ -483,6 +483,8 @@ body {
   box-shadow: 0 8px 24px rgba(233, 162, 59, 0.35);
 }
 .playbtn:active { transform: scale(0.96); }
+.playbtn:disabled, .mini__controls .iconbtn:disabled { opacity: 0.4; cursor: default; box-shadow: none; }
+.now__missing { margin: 14px 0; padding: 0 24px; text-align: center; font-size: 13px; color: var(--accent); }
 
 .loopbtn {
   display: inline-flex; align-items: center; gap: 8px;
