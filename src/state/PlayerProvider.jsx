@@ -19,6 +19,7 @@ const MEDIA_ACTIONS = [
 export function PlayerProvider({ children }) {
   const audioRef = useRef(null)
   const countedRef = useRef(false) // so each play only bumps playCount once
+  const loadedIdRef = useRef(null) // the track id the <audio> element is loaded with
   const objectUrlRef = useRef(null) // current blob: URL, revoked when track changes
   const [missing, setMissing] = useState(false) // audio bytes not found
 
@@ -79,6 +80,10 @@ export function PlayerProvider({ children }) {
     if (!audio || !current) return
     let cancelled = false
     countedRef.current = false
+    // Blank the loaded-id until the element actually switches to this track, so
+    // a timeupdate from the still-playing PREVIOUS track (during the async blob
+    // read) can't be credited to it a second time.
+    loadedIdRef.current = null
     setMissing(false)
     // Reset the scrubber immediately so it doesn't show the previous track's
     // position/length until the new metadata arrives.
@@ -120,6 +125,7 @@ export function PlayerProvider({ children }) {
       revokePrev()
       if (!current.src) objectUrlRef.current = url
       audio.src = url
+      loadedIdRef.current = current.id // element is now this track → safe to count
       audio.loop = loopMode === 'one'
       audio.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false))
     })()
@@ -200,6 +206,14 @@ export function PlayerProvider({ children }) {
   const onTimeUpdate = (e) => {
     const a = e.target
     setProgress(a.currentTime)
+    // Count a play only after real listening — a few seconds in, or halfway
+    // through a short track. Doing it here (not on loadedmetadata) means
+    // skipping past tracks no longer inflates playCount, and we credit the
+    // track the element is actually loaded with, not a since-changed `current`.
+    if (!countedRef.current && loadedIdRef.current && a.currentTime >= Math.min(5, (a.duration || 10) * 0.5)) {
+      countedRef.current = true
+      bumpPlayCount(loadedIdRef.current)
+    }
     // Feed the lock-screen scrubber on iOS.
     if ('mediaSession' in navigator && navigator.mediaSession.setPositionState && a.duration && Number.isFinite(a.duration)) {
       try {
@@ -215,11 +229,6 @@ export function PlayerProvider({ children }) {
   }
   const onLoadedMeta = (e) => {
     setDuration(e.target.duration || 0)
-    // Count a play shortly after it successfully starts.
-    if (current && !countedRef.current) {
-      countedRef.current = true
-      bumpPlayCount(current.id)
-    }
   }
   const onEnded = () => {
     // loop === 'one' is handled by audio.loop (no 'ended' fires).
