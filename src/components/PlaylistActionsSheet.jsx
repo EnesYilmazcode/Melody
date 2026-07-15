@@ -1,9 +1,20 @@
+import { useDialog } from '../lib/useDialog'
+
 // Bottom sheet for a single playlist — opened by long-pressing a playlist card
 // or tapping ⋯ inside a playlist. Offers Rename and Delete.
 export default function PlaylistActionsSheet({ playlist, onRename, onDelete, onClose }) {
+  const dialog = useDialog(onClose)
   return (
     <div className="sheet-overlay" onClick={onClose}>
-      <div className="sheet" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="sheet"
+        ref={dialog.ref}
+        onKeyDown={dialog.onKeyDown}
+        role="dialog"
+        aria-modal="true"
+        tabIndex={-1}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="sheet__grip" />
         <p className="sheet__title">{playlist.name}</p>
 

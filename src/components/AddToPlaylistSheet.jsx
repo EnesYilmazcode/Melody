@@ -5,6 +5,7 @@ import { usePlayer } from '../state/PlayerProvider'
 import { addToPlaylist, createPlaylist, toggleStar, deleteTrack } from '../lib/db'
 import PromptModal from './PromptModal'
 import ConfirmModal from './ConfirmModal'
+import { useDialog } from '../lib/useDialog'
 
 // Track actions sheet (opened from a TrackRow's ⋯). Quick playback actions on
 // top (Play next / Add to queue / Favorite), then the "add to playlist" picker.
@@ -14,6 +15,9 @@ export default function AddToPlaylistSheet() {
   const { playNext, addToQueue } = usePlayer()
   const [creating, setCreating] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  // This host is always mounted (returns null when closed), so key the focus on
+  // whether a track is open, not on mount.
+  const dialog = useDialog(closeAddToPlaylist, { active: !!addTarget })
   if (!addTarget) return null
 
   const close = closeAddToPlaylist
@@ -25,7 +29,15 @@ export default function AddToPlaylistSheet() {
   return (
     <>
       <div className="sheet-overlay" onClick={close}>
-        <div className="sheet" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="sheet"
+          ref={dialog.ref}
+          onKeyDown={dialog.onKeyDown}
+          role="dialog"
+          aria-modal="true"
+          tabIndex={-1}
+          onClick={(e) => e.stopPropagation()}
+        >
           <div className="sheet__grip" />
           <p className="sheet__title">{addTarget.title}</p>
 
