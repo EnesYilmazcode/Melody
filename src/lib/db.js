@@ -105,16 +105,39 @@ export async function storageEstimate() {
   }
 }
 
-/** Store an imported audio file as a new local track. Returns the track id. */
+/**
+ * Store an imported audio file as a new local track, unless an identical track
+ * is already imported. Returns `{ id, duplicate }`: `duplicate` is true when an
+ * existing track matched and nothing was written.
+ */
 export async function addLocalTrack({ title, artist, duration, blob, thumbnailUrl = null, youtubeId = null }) {
-  const id = `local-${crypto.randomUUID()}`
+  const nTitle = title || 'Unknown'
+  const nArtist = artist || 'Imported'
+  const nDuration = duration || 0
+  let result
   await db.transaction('rw', db.tracks, db.audioBlobs, async () => {
+    // Dedup: re-importing the same file shouldn't duplicate the row AND its
+    // (heavy) audio Blob — that just doubles storage toward the ~1GB iOS
+    // eviction cap. Match on YouTube id when present, else title+artist+duration.
+    const dup = await db.tracks
+      .filter((t) =>
+        t.srcType === 'idb' &&
+        ((youtubeId && t.youtubeId === youtubeId) ||
+          (t.title === nTitle && t.artist === nArtist && t.duration === nDuration)),
+      )
+      .first()
+    if (dup) {
+      result = { id: dup.id, duplicate: true }
+      return
+    }
+
+    const id = `local-${crypto.randomUUID()}`
     await db.audioBlobs.add({ id, blob })
     await db.tracks.add({
       id,
-      title: title || 'Unknown',
-      artist: artist || 'Imported',
-      duration: duration || 0,
+      title: nTitle,
+      artist: nArtist,
+      duration: nDuration,
       thumbnailUrl,
       youtubeId,
       filePath: null,
@@ -125,8 +148,9 @@ export async function addLocalTrack({ title, artist, duration, blob, thumbnailUr
       lastPlayedAt: null,
       dateAdded: Date.now(),
     })
+    result = { id, duplicate: false }
   })
-  return id
+  return result
 }
 
 /** The raw audio Blob for a track, or null. */

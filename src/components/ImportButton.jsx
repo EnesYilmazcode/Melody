@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { addLocalTrack, requestPersistentStorage } from '../lib/db'
+import { addLocalTrack, requestPersistentStorage, storageEstimate } from '../lib/db'
 import { readDuration, parseFilename } from '../lib/audio'
 import { ensureLyrics } from '../lib/lyrics'
 import { fetchYouTubePreview } from '../lib/youtube'
@@ -10,19 +10,36 @@ import { fetchYouTubePreview } from '../lib/youtube'
 export default function ImportButton() {
   const inputRef = useRef(null)
   const [remaining, setRemaining] = useState(0)
+  const [notice, setNotice] = useState(null) // user-facing result/errors
 
   const onPick = async (e) => {
     const files = [...e.target.files]
     e.target.value = '' // reset so the same file can be re-picked later
     if (!files.length) return
+    setNotice(null)
 
     await requestPersistentStorage() // ask iOS to keep the library durable
+
+    // Pre-flight storage check: if the picked files clearly won't fit in the
+    // remaining budget, bail with a message instead of letting the blob write
+    // fail silently partway through (iOS ~1GB, evictable).
+    const totalBytes = files.reduce((n, f) => n + (f.size || 0), 0)
+    const est = await storageEstimate()
+    if (est?.quota && est.usage + totalBytes > est.quota * 0.95) {
+      setNotice("Not enough storage to import these. Free up space and try again.")
+      return
+    }
+
     setRemaining(files.length)
+    let imported = 0
+    let skipped = 0
+    let failed = 0
+    let outOfSpace = false
     for (const file of files) {
       try {
         const { title, youtubeId } = parseFilename(file.name)
         let { artist } = parseFilename(file.name)
-        const duration = await readDuration(file)
+        const duration = await readDuration(file) // rejects if undecodable
         const thumbnailUrl = youtubeId
           ? `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg`
           : null
@@ -35,16 +52,36 @@ export default function ImportButton() {
           if (chan) artist = chan
         }
 
-        const id = await addLocalTrack({ title, artist, duration, blob: file, thumbnailUrl, youtubeId })
+        const { id, duplicate } = await addLocalTrack({ title, artist, duration, blob: file, thumbnailUrl, youtubeId })
+        if (duplicate) {
+          skipped++
+          continue
+        }
+        imported++
         // fetch lyrics in the background (cached for offline); don't block import
         ensureLyrics({ id, title, artist, duration }).catch(() => {})
       } catch (err) {
+        failed++
+        if (err?.name === 'QuotaExceededError') {
+          outOfSpace = true
+          break // storage is full — no point trying the rest
+        }
         console.error('import failed for', file.name, err)
       } finally {
         setRemaining((n) => n - 1)
       }
     }
     setRemaining(0)
+
+    // Only surface something when it's worth telling the user about.
+    if (outOfSpace) {
+      setNotice("Ran out of storage — not all tracks were imported.")
+    } else {
+      const parts = []
+      if (skipped) parts.push(`${skipped} already in your library`)
+      if (failed) parts.push(`${failed} couldn't be imported`)
+      setNotice(parts.length ? parts.join(' · ') : null)
+    }
   }
 
   const busy = remaining > 0
@@ -66,6 +103,11 @@ export default function ImportButton() {
         hidden
         onChange={onPick}
       />
+      {notice && (
+        <p className="importnote" role="status">
+          {notice}
+        </p>
+      )}
     </>
   )
 }

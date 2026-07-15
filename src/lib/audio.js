@@ -1,16 +1,21 @@
 // Read an audio file's duration (seconds) by loading its metadata into a
 // throwaway <audio> element. Works for any format the device can decode.
 export function readDuration(blob) {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('audio')
     a.preload = 'metadata'
-    const done = (d) => {
+    a.onloadedmetadata = () => {
       URL.revokeObjectURL(url)
-      resolve(Number.isFinite(d) ? d : 0)
+      resolve(Number.isFinite(a.duration) ? a.duration : 0)
     }
-    a.onloadedmetadata = () => done(a.duration)
-    a.onerror = () => done(0)
+    // A decode error means the device can't play this file. Reject so the
+    // importer can refuse it, instead of silently storing an unplayable
+    // 0-duration track that fails the moment you press play.
+    a.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error('unreadable-audio'))
+    }
     a.src = url
   })
 }
