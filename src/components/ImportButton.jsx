@@ -31,7 +31,6 @@ export default function ImportButton() {
     }
 
     setRemaining(files.length)
-    let imported = 0
     let skipped = 0
     let failed = 0
     let outOfSpace = false
@@ -57,7 +56,6 @@ export default function ImportButton() {
           skipped++
           continue
         }
-        imported++
         // fetch lyrics in the background (cached for offline); don't block import
         ensureLyrics({ id, title, artist, duration }).catch(() => {})
       } catch (err) {
