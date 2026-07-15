@@ -13,7 +13,6 @@
   --accent-soft: #2a2114;
 
   --font: 'Bricolage Grotesque Variable', -apple-system, system-ui, sans-serif;
-  --dock-h: 150px; /* reserved space so content never hides under the dock */
 
   color-scheme: dark;
 }
@@ -77,7 +76,6 @@ body {
 }
 
 .view__head { margin-bottom: 18px; }
-.view__head--row { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
 .view__titlerow { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 
 .importbtn { display: inline-flex; align-items: center; gap: 7px; flex-shrink: 0; margin-top: 6px; }
@@ -177,10 +175,6 @@ body {
   font-family: var(--font);
   color: var(--text); font-size: 16px; /* 16px = no iOS zoom-on-focus */
   padding: 13px 0; outline: none;
-}
-.searchbar__clear {
-  border: none; background: none; color: var(--text-faint);
-  font-size: 22px; line-height: 1; cursor: pointer; padding: 0 4px;
 }
 .searchbar__icon {
   border: none; background: none; color: var(--text-dim);
@@ -282,11 +276,6 @@ body {
 .plcard__name { font-size: 16px; font-weight: 600; }
 .plrow { display: flex; align-items: center; }
 .plrow .row { flex: 1; }
-.backbtn {
-  background: none; border: none; color: var(--accent);
-  font-family: var(--font); font-size: 15px; font-weight: 600;
-  padding: 0 0 12px; cursor: pointer;
-}
 
 /* ── bottom sheet ────────────────────────────────────────────── */
 .sheet-overlay {

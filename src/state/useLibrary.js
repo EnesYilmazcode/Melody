@@ -12,16 +12,8 @@ export function useTracks() {
   return useLiveQuery(() => db.tracks.orderBy('dateAdded').reverse().toArray())
 }
 
-export function useStarredTracks() {
-  return useLiveQuery(() => db.tracks.where('starred').equals(1).toArray())
-}
-
 export function usePlaylists() {
   return useLiveQuery(() => db.playlists.orderBy('createdAt').reverse().toArray())
-}
-
-export function usePlaylist(id) {
-  return useLiveQuery(() => (id == null ? undefined : db.playlists.get(id)), [id])
 }
 
 export function useLyrics(trackId) {

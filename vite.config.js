@@ -1,6 +1,19 @@
+import { rm } from 'node:fs/promises'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+
+// The public/samples/*.wav tones are dev-only seed fixtures (see src/lib/seed.js,
+// gated behind import.meta.env.DEV). Because they live in public/ they'd be
+// copied verbatim into the build; strip them from the production output so
+// ~2.7MB of audio no user ever plays doesn't ship.
+const stripDevSamplesPlugin = () => ({
+  name: 'melody-strip-dev-samples',
+  apply: 'build',
+  closeBundle: async () => {
+    await rm('dist/samples', { recursive: true, force: true })
+  },
+})
 
 // Content-Security-Policy (defense-in-depth). Injected into index.html for
 // PRODUCTION BUILDS ONLY — dev/HMR needs inline scripts + eval, which this would
@@ -49,6 +62,7 @@ export default defineConfig(({ command }) => ({
   plugins: [
     // CSP only in the built HTML — injecting it in dev would break Vite HMR.
     command === 'build' && cspPlugin(),
+    stripDevSamplesPlugin(), // apply:'build' gates it to production
     react(),
     VitePWA({
       // 'autoUpdate' = the new service worker activates and reloads the page as
