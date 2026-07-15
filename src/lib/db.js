@@ -67,18 +67,21 @@ export async function upsertCatalog(catalogTracks) {
   })
 }
 
+// `modify` re-reads the live row inside an implicit transaction and applies the
+// mutator, so concurrent calls can't lose each other's update (which a
+// get-then-update pair, with an await gap between them, would). A no-match id
+// simply modifies nothing — no error — so the old `if (!t) return` guard is
+// unnecessary.
 export async function toggleStar(trackId) {
-  const t = await db.tracks.get(trackId)
-  if (!t) return
-  await db.tracks.update(trackId, { starred: t.starred ? 0 : 1 })
+  await db.tracks.where('id').equals(trackId).modify((t) => {
+    t.starred = t.starred ? 0 : 1
+  })
 }
 
 export async function bumpPlayCount(trackId) {
-  const t = await db.tracks.get(trackId)
-  if (!t) return
-  await db.tracks.update(trackId, {
-    playCount: (t.playCount || 0) + 1,
-    lastPlayedAt: Date.now(),
+  await db.tracks.where('id').equals(trackId).modify((t) => {
+    t.playCount = (t.playCount || 0) + 1
+    t.lastPlayedAt = Date.now()
   })
 }
 
@@ -159,16 +162,17 @@ export async function deletePlaylist(id) {
   await db.playlists.delete(id)
 }
 
+// Atomic read-modify-write via `modify` (see toggleStar above): two overlapping
+// edits to the same playlist each rewrite the whole trackIds array, so without
+// this a get-then-update pair would let the second write clobber the first.
 export async function addToPlaylist(id, trackId) {
-  const pl = await db.playlists.get(id)
-  if (!pl) return
-  if (!pl.trackIds.includes(trackId)) {
-    await db.playlists.update(id, { trackIds: [...pl.trackIds, trackId] })
-  }
+  await db.playlists.where('id').equals(id).modify((pl) => {
+    if (!pl.trackIds.includes(trackId)) pl.trackIds.push(trackId)
+  })
 }
 
 export async function removeFromPlaylist(id, trackId) {
-  const pl = await db.playlists.get(id)
-  if (!pl) return
-  await db.playlists.update(id, { trackIds: pl.trackIds.filter((t) => t !== trackId) })
+  await db.playlists.where('id').equals(id).modify((pl) => {
+    pl.trackIds = pl.trackIds.filter((t) => t !== trackId)
+  })
 }
