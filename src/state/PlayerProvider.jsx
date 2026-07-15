@@ -104,6 +104,7 @@ export function PlayerProvider({ children }) {
             audio.pause()
             audio.removeAttribute('src')
             audio.load()
+            revokePrev() // release the previous track's blob URL too
             setIsPlaying(false)
             setMissing(true)
           }
