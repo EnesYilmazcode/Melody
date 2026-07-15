@@ -36,8 +36,10 @@ export function buildYtDlpCommand(url) {
 // unlike YouTube's own oEmbed — sends CORS headers so the browser can read it.
 export async function fetchYouTubePreview(id) {
   try {
+    // encodeURIComponent(id) is a no-op for a valid 11-char id, but hardens the
+    // request against query-param injection if an unvalidated id ever reaches here.
     const res = await fetch(
-      `https://noembed.com/embed?url=https://www.youtube.com/watch?v=${id}`,
+      `https://noembed.com/embed?url=https://www.youtube.com/watch?v=${encodeURIComponent(id)}`,
     )
     if (!res.ok) return null
     const d = await res.json()

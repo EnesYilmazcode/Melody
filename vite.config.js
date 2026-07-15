@@ -2,6 +2,38 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
+// Content-Security-Policy (defense-in-depth). Injected into index.html for
+// PRODUCTION BUILDS ONLY — dev/HMR needs inline scripts + eval, which this would
+// block. Sources: app assets are same-origin ('self'); thumbnails come from
+// YouTube's image CDNs; JSON is fetched from noembed + lrclib; imported audio
+// and artwork play from blob: URLs; React sets inline style attributes
+// ('unsafe-inline' for style only, never script).
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob: https://i.ytimg.com https://*.ytimg.com https://*.ggpht.com",
+  "media-src 'self' blob:",
+  "connect-src 'self' https://noembed.com https://lrclib.net",
+  "font-src 'self'",
+  "manifest-src 'self'",
+  "worker-src 'self'",
+  "object-src 'none'",
+  "base-uri 'none'",
+].join('; ')
+
+const cspPlugin = () => ({
+  name: 'melody-csp',
+  transformIndexHtml: {
+    order: 'post',
+    // Inject as the FIRST head child so the policy governs every subresource
+    // (the app bundle, CSS, fonts) — a meta CSP doesn't apply to requests made
+    // before it's parsed.
+    handler: (html) =>
+      html.replace('<head>', `<head>\n    <meta http-equiv="Content-Security-Policy" content="${CSP}" />`),
+  },
+})
+
 // NOTE on `base`: production is served from a SUBPATH, so the built asset URLs
 // must be prefixed with it or the deployed app loads a blank white screen (the
 // JS/CSS 404). The live deploy is Firebase via `npm run deploy:sparky`, hosted
@@ -15,6 +47,8 @@ import { VitePWA } from 'vite-plugin-pwa'
 export default defineConfig(({ command }) => ({
   base: command === 'build' ? '/melody/' : '/',
   plugins: [
+    // CSP only in the built HTML — injecting it in dev would break Vite HMR.
+    command === 'build' && cspPlugin(),
     react(),
     VitePWA({
       // 'autoUpdate' = the new service worker activates and reloads the page as
