@@ -149,14 +149,16 @@ export function PlayerProvider({ children }) {
   }, [current, play, pause])
 
   const next = useCallback(() => {
-    let target
-    if (index + 1 < queue.length) target = index + 1
-    else if (loopMode === 'all') target = 0
-    else return // at the end with no loop → stay put
-    // Same index (single-track loop-all) → force a restart; otherwise just move.
-    if (target === index) setPlayToken((t) => t + 1)
-    else setIndex(target)
-  }, [index, queue.length, loopMode])
+    // Single-track queue: the only "advance" is restarting the lone track, and
+    // only when looping all (otherwise stay put). A token bump handles it since
+    // the index can't change.
+    if (queue.length <= 1) {
+      if (loopMode === 'all') setPlayToken((t) => t + 1)
+      return
+    }
+    // Multi-track: functional updater keeps advances atomic under rapid taps.
+    setIndex((i) => (i + 1 < queue.length ? i + 1 : loopMode === 'all' ? 0 : i))
+  }, [queue.length, loopMode])
 
   const prev = useCallback(() => {
     const audio = audioRef.current
@@ -165,13 +167,12 @@ export function PlayerProvider({ children }) {
       audio.currentTime = 0
       return
     }
-    let target
-    if (index > 0) target = index - 1
-    else if (loopMode === 'all') target = queue.length - 1
-    else return // at the start with no loop → stay put
-    if (target === index) setPlayToken((t) => t + 1)
-    else setIndex(target)
-  }, [index, queue.length, loopMode])
+    if (queue.length <= 1) {
+      if (loopMode === 'all') setPlayToken((t) => t + 1)
+      return
+    }
+    setIndex((i) => (i > 0 ? i - 1 : loopMode === 'all' ? queue.length - 1 : i))
+  }, [queue.length, loopMode])
 
   const seek = useCallback((t) => {
     if (audioRef.current) audioRef.current.currentTime = t
