@@ -18,10 +18,12 @@ export default function Player() {
         <Artwork track={p.current} size={40} />
         <span className="mini__meta">
           <span className="mini__title">{p.current.title}</span>
-          <span className="mini__artist">{p.current.artist}</span>
+          <span className="mini__artist">
+            {p.missing ? 'Audio unavailable — re-import' : p.current.artist}
+          </span>
         </span>
         <span className="mini__controls" onClick={(e) => e.stopPropagation()}>
-          <button className="iconbtn" onClick={p.toggle} aria-label={p.isPlaying ? 'Pause' : 'Play'}>
+          <button className="iconbtn" onClick={p.toggle} aria-label={p.isPlaying ? 'Pause' : 'Play'} disabled={p.missing}>
             {p.isPlaying ? <PauseIcon /> : <PlayIcon />}
           </button>
           <button className="iconbtn" onClick={p.next} aria-label="Next"><NextIcon /></button>
@@ -82,25 +84,31 @@ function NowPlaying({ p, onClose }) {
         </button>
       </div>
 
-      <div className="scrub">
-        <input
-          type="range"
-          min="0"
-          max={p.duration || 0}
-          step="0.1"
-          value={p.progress}
-          onChange={(e) => p.seek(Number(e.target.value))}
-          style={{ background: `linear-gradient(to right, var(--accent) ${pct}%, var(--surface-2) ${pct}%)` }}
-        />
-        <div className="scrub__times">
-          <span>{formatTime(p.progress)}</span>
-          <span>{formatTime(p.duration)}</span>
+      {p.missing ? (
+        <p className="now__missing" role="status">
+          Audio unavailable — the file for this track is missing. Re-import it to play.
+        </p>
+      ) : (
+        <div className="scrub">
+          <input
+            type="range"
+            min="0"
+            max={p.duration || 0}
+            step="0.1"
+            value={p.progress}
+            onChange={(e) => p.seek(Number(e.target.value))}
+            style={{ background: `linear-gradient(to right, var(--accent) ${pct}%, var(--surface-2) ${pct}%)` }}
+          />
+          <div className="scrub__times">
+            <span>{formatTime(p.progress)}</span>
+            <span>{formatTime(p.duration)}</span>
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="transport">
         <button className="iconbtn" onClick={p.prev} aria-label="Previous"><PrevIcon /></button>
-        <button className="playbtn" onClick={p.toggle} aria-label={p.isPlaying ? 'Pause' : 'Play'}>
+        <button className="playbtn" onClick={p.toggle} aria-label={p.isPlaying ? 'Pause' : 'Play'} disabled={p.missing}>
           {p.isPlaying ? <PauseIcon big /> : <PlayIcon big />}
         </button>
         <button className="iconbtn" onClick={p.next} aria-label="Next"><NextIcon /></button>

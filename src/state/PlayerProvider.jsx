@@ -80,6 +80,10 @@ export function PlayerProvider({ children }) {
     let cancelled = false
     countedRef.current = false
     setMissing(false)
+    // Reset the scrubber immediately so it doesn't show the previous track's
+    // position/length until the new metadata arrives.
+    setProgress(0)
+    setDuration(0)
 
     const revokePrev = () => {
       if (objectUrlRef.current) {
@@ -93,7 +97,17 @@ export function PlayerProvider({ children }) {
       if (!url) {
         const blob = await getAudioBlob(current.id)
         if (!blob) {
-          if (!cancelled) setMissing(true)
+          // Bytes are gone (cleared storage / failed import). Stop the element
+          // so it doesn't keep playing the PREVIOUS track under a now-missing
+          // `current`, and reset state so the UI can show an honest message.
+          if (!cancelled) {
+            audio.pause()
+            audio.removeAttribute('src')
+            audio.load()
+            revokePrev() // release the previous track's blob URL too
+            setIsPlaying(false)
+            setMissing(true)
+          }
           return
         }
         if (cancelled) return
