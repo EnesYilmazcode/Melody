@@ -8,6 +8,14 @@ export const usePlayer = () => useContext(PlayerContext)
 //   off → all (loop the whole queue/playlist) → one (loop this song) → off
 export const LOOP_MODES = ['off', 'all', 'one']
 
+// Every MediaSession action we ever register — used to tear them all down on
+// cleanup / when nothing is playing, so the lock screen never keeps stale
+// handlers bound to a previous track's closures.
+const MEDIA_ACTIONS = [
+  'play', 'pause', 'previoustrack', 'nexttrack',
+  'stop', 'seekbackward', 'seekforward', 'seekto',
+]
+
 export function PlayerProvider({ children }) {
   const audioRef = useRef(null)
   const countedRef = useRef(false) // so each play only bumps playCount once
@@ -197,34 +205,67 @@ export function PlayerProvider({ children }) {
     }
   }
 
-  // ── Media Session API → iOS lock screen / control center ──
+  // ── Media Session API → iOS lock screen / control center / AirPods ──
   useEffect(() => {
-    if (!('mediaSession' in navigator) || !current) return
-    navigator.mediaSession.metadata = new window.MediaMetadata({
+    if (!('mediaSession' in navigator)) return
+    const ms = navigator.mediaSession
+    // setActionHandler throws for actions an engine doesn't support, so wrap
+    // each one; likewise nulling handlers on cleanup.
+    const clearAll = () => {
+      for (const a of MEDIA_ACTIONS) {
+        try { ms.setActionHandler(a, null) } catch { /* action unsupported */ }
+      }
+    }
+
+    // Nothing loaded → tear down so the lock screen doesn't keep stale controls.
+    if (!current) {
+      ms.metadata = null
+      clearAll()
+      return
+    }
+
+    ms.metadata = new window.MediaMetadata({
       title: current.title || 'Unknown',
       artist: current.artist || '',
       artwork: current.thumbnailUrl
         ? [{ src: current.thumbnailUrl, sizes: '512x512', type: 'image/png' }]
         : [],
     })
-    navigator.mediaSession.setActionHandler('play', play)
-    navigator.mediaSession.setActionHandler('pause', pause)
-    navigator.mediaSession.setActionHandler('previoustrack', prev)
-    navigator.mediaSession.setActionHandler('nexttrack', next)
-    try {
-      navigator.mediaSession.setActionHandler('seekto', (d) => {
-        if (d.seekTime != null) seek(d.seekTime)
-      })
-    } catch {
-      /* 'seekto' unsupported on some browsers — non-fatal */
+
+    const set = (action, handler) => {
+      try { ms.setActionHandler(action, handler) } catch { /* action unsupported */ }
     }
+    set('play', play)
+    set('pause', pause)
+    set('previoustrack', prev)
+    set('nexttrack', next)
+    set('stop', () => {
+      pause()
+      if (audioRef.current) audioRef.current.currentTime = 0
+    })
+    set('seekbackward', (d) => seek(Math.max(0, (audioRef.current?.currentTime || 0) - (d.seekOffset || 10))))
+    set('seekforward', (d) => {
+      const a = audioRef.current
+      if (!a) return
+      const target = (a.currentTime || 0) + (d.seekOffset || 10)
+      seek(a.duration ? Math.min(a.duration, target) : target)
+    })
+    set('seekto', (d) => { if (d.seekTime != null) seek(d.seekTime) })
+
+    // Clear handlers when the track changes or the provider unmounts, so no
+    // remote press ever fires a closure bound to the previous track.
+    return clearAll
   }, [current, play, pause, prev, next, seek])
 
+  // Single source of truth for playbackState: 'none' when nothing is loaded,
+  // else mirror isPlaying. iOS uses this to decide whether a remote press maps
+  // to the play or the pause action, so it must stay in sync.
   useEffect(() => {
-    if ('mediaSession' in navigator) {
-      navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused'
-    }
-  }, [isPlaying])
+    if (!('mediaSession' in navigator)) return
+    try {
+      navigator.mediaSession.playbackState = !current ? 'none' : isPlaying ? 'playing' : 'paused'
+    } catch { /* older browsers */ }
+  }, [isPlaying, current])
 
   const value = {
     current, queue, index, isPlaying, loopMode, progress, duration, missing,
