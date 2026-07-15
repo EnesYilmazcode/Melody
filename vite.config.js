@@ -26,8 +26,11 @@ const cspPlugin = () => ({
   name: 'melody-csp',
   transformIndexHtml: {
     order: 'post',
+    // Inject as the FIRST head child so the policy governs every subresource
+    // (the app bundle, CSS, fonts) — a meta CSP doesn't apply to requests made
+    // before it's parsed.
     handler: (html) =>
-      html.replace('</head>', `    <meta http-equiv="Content-Security-Policy" content="${CSP}" />\n  </head>`),
+      html.replace('<head>', `<head>\n    <meta http-equiv="Content-Security-Policy" content="${CSP}" />`),
   },
 })
 

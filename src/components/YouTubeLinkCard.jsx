@@ -7,7 +7,9 @@ import { buildYtDlpCommand, fetchYouTubePreview } from '../lib/youtube'
 function safeThumb(url) {
   try {
     const u = new URL(url)
-    if (u.protocol === 'https:' && /(^|\.)(ytimg\.com|ggpht\.com)$/i.test(u.hostname)) {
+    // Require a subdomain of ytimg.com / ggpht.com (matches the img-src CSP,
+    // which allows *.ytimg.com / *.ggpht.com, not the bare apex).
+    if (u.protocol === 'https:' && /\.(ytimg|ggpht)\.com$/i.test(u.hostname)) {
       return url
     }
   } catch {
