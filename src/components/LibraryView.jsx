@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTracks } from '../state/useLibrary'
 import { usePlayer } from '../state/PlayerProvider'
+import { shuffle } from '../lib/shuffle'
 import TrackRow from './TrackRow'
 import ImportButton from './ImportButton'
 
@@ -35,7 +36,7 @@ export default function LibraryView() {
             <button className="btn btn--accent playall" onClick={() => playQueue(shown, 0)}>
               <PlayGlyph /> Play
             </button>
-            <button className="btn btn--ghost playall" onClick={() => playQueue([...shown].sort(() => Math.random() - 0.5), 0)}>
+            <button className="btn btn--ghost playall" onClick={() => playQueue(shuffle(shown), 0)}>
               <ShuffleGlyph /> Shuffle
             </button>
           </div>

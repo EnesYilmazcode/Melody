@@ -8,8 +8,8 @@ import { seedIfEmpty, removeSamples } from './lib/seed'
 
 // In dev we seed sample tones to develop against; in the real (prod) app there
 // are no samples — and we clean up any that were seeded by earlier builds.
-if (import.meta.env.DEV) seedIfEmpty()
-else removeSamples()
+if (import.meta.env.DEV) seedIfEmpty().catch(() => {})
+else removeSamples().catch(() => {})
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

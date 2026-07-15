@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useDeferredValue } from 'react'
 import { useTracks, useSearch } from '../state/useLibrary'
 import { parseYouTube, buildYtDlpCommand } from '../lib/youtube'
 import TrackRow from './TrackRow'
@@ -8,8 +8,13 @@ export default function SearchView() {
   const [query, setQuery] = useState('')
   const [autoCopied, setAutoCopied] = useState(false)
   const tracks = useTracks()
-  const results = useSearch(tracks, query)
-  const q = query.trim()
+  // Defer the query fed to the (synchronous) fuzzy search so fast typing over a
+  // large library doesn't drop input frames — React can skip intermediate list
+  // renders and catch up when idle.
+  const deferredQuery = useDeferredValue(query)
+  const results = useSearch(tracks, deferredQuery)
+  const q = query.trim() // immediate — drives the clear button
+  const dq = deferredQuery.trim() // matches `results`, so the list/hint stay consistent
   const yt = parseYouTube(query) // non-null when a YouTube link is pasted
 
   // One tap: read the link from the clipboard AND copy the a-Shell command back,
@@ -70,7 +75,7 @@ export default function SearchView() {
         <YouTubeLinkCard yt={yt} copied={autoCopied} />
       ) : tracks === undefined ? (
         <p className="dim">Loading…</p>
-      ) : q && results.length > 0 ? (
+      ) : dq && results.length > 0 ? (
         <div className="list">
           {results.map((t) => (
             <TrackRow key={t.id} track={t} list={results} />
@@ -78,7 +83,7 @@ export default function SearchView() {
         </div>
       ) : (
         <p className="dim searchhint">
-          {q ? `Nothing matches “${q}”.` : 'Tap the paste icon to drop in a YouTube link, or type to search your library.'}
+          {dq ? `Nothing matches “${dq}”.` : 'Tap the paste icon to drop in a YouTube link, or type to search your library.'}
         </p>
       )}
     </section>
