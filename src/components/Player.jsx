@@ -89,7 +89,7 @@ function NowPlaying({ p, onClose }) {
         </div>
         <button
           className={`iconbtn ${starred ? 'iconbtn--star-on' : ''}`}
-          onClick={() => toggleStar(p.current.id)}
+          onClick={() => toggleStar(p.current.id).catch(() => {})}
           aria-label="Favorite"
         >
           <StarIcon filled={!!starred} />

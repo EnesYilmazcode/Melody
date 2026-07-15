@@ -47,7 +47,7 @@ export default function AddToPlaylistSheet() {
           <button className="sheet__item" onClick={() => { addToQueue(addTarget); close() }}>
             <span>Add to queue</span><Glyph d="M3 5h10M3 9h10M3 13h6M14 11v6M14 17l3-2M14 17l-3-2" />
           </button>
-          <button className="sheet__item" onClick={() => { toggleStar(addTarget.id); close() }}>
+          <button className="sheet__item" onClick={() => { toggleStar(addTarget.id).catch(() => {}); close() }}>
             <span>{addTarget.starred ? 'Remove from favorites' : 'Add to favorites'}</span>
             <Glyph filled={!!addTarget.starred} d="M9 1.5l2.2 4.5 5 .7-3.6 3.5.85 5L9 12.9 4.7 15.2l.85-5L2 6.7l5-.7z" />
           </button>

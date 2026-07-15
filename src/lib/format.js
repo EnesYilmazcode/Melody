@@ -8,11 +8,13 @@ export function summarize(tracks) {
   return `${count} · ${dur}`
 }
 
-/** 73 → "1:13", 605 → "10:05". Handles null/NaN gracefully. */
+/** 73 → "1:13", 605 → "10:05", 3661 → "1:01:01". Handles null/NaN gracefully. */
 export function formatTime(sec) {
   if (sec == null || Number.isNaN(sec)) return '0:00'
   const s = Math.max(0, Math.floor(sec))
-  const m = Math.floor(s / 60)
-  const r = s % 60
-  return `${m}:${r.toString().padStart(2, '0')}`
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const r = (s % 60).toString().padStart(2, '0')
+  if (h) return `${h}:${m.toString().padStart(2, '0')}:${r}`
+  return `${m}:${r}`
 }

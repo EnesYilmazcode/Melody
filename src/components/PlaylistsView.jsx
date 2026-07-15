@@ -4,6 +4,7 @@ import { createPlaylist, renamePlaylist, deletePlaylist, removeFromPlaylist } fr
 import { usePlayer } from '../state/PlayerProvider'
 import { useLongPress } from '../lib/useLongPress'
 import { summarize } from '../lib/format'
+import { shuffle } from '../lib/shuffle'
 import TrackRow from './TrackRow'
 import PromptModal from './PromptModal'
 import ConfirmModal from './ConfirmModal'
@@ -116,7 +117,7 @@ function PlaylistDetail({ playlist, onBack, onActions }) {
   // Resolve ids → track objects in saved order, dropping any since-deleted ids.
   const byId = new Map(allTracks.map((t) => [t.id, t]))
   const tracks = playlist.trackIds.map((id) => byId.get(id)).filter(Boolean)
-  const shuffled = () => [...tracks].sort(() => Math.random() - 0.5)
+  const shuffled = () => shuffle(tracks)
 
   return (
     <>

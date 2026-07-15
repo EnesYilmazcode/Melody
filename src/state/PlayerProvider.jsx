@@ -139,6 +139,12 @@ export function PlayerProvider({ children }) {
     if (audioRef.current) audioRef.current.loop = loopMode === 'one'
   }, [loopMode])
 
+  // Revoke the last object URL when the provider unmounts (the per-track effect
+  // only revokes the PREVIOUS one on the next load).
+  useEffect(() => () => {
+    if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current)
+  }, [])
+
   // Resume playback. Idempotent (play() while already playing is a no-op), so
   // it can never invert iOS's own control of the element — this is what makes
   // AirPods/lock-screen resume reliable. On reject we sync isPlaying=false so
@@ -212,7 +218,7 @@ export function PlayerProvider({ children }) {
     // track the element is actually loaded with, not a since-changed `current`.
     if (!countedRef.current && loadedIdRef.current && a.currentTime >= Math.min(5, (a.duration || 10) * 0.5)) {
       countedRef.current = true
-      bumpPlayCount(loadedIdRef.current)
+      bumpPlayCount(loadedIdRef.current).catch(() => {})
     }
     // Feed the lock-screen scrubber on iOS.
     if ('mediaSession' in navigator && navigator.mediaSession.setPositionState && a.duration && Number.isFinite(a.duration)) {
@@ -268,7 +274,7 @@ export function PlayerProvider({ children }) {
       title: current.title || 'Unknown',
       artist: current.artist || '',
       artwork: current.thumbnailUrl
-        ? [{ src: current.thumbnailUrl, sizes: '512x512', type: 'image/png' }]
+        ? [{ src: current.thumbnailUrl, sizes: 'any', type: 'image/jpeg' }]
         : [],
     })
 

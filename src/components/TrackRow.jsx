@@ -26,7 +26,7 @@ export default function TrackRow({ track, list }) {
 
       <button
         className={`iconbtn ${track.starred ? 'iconbtn--star-on' : ''}`}
-        onClick={() => toggleStar(track.id)}
+        onClick={() => toggleStar(track.id).catch(() => {})}
         aria-label={track.starred ? 'Unfavorite' : 'Favorite'}
       >
         <StarIcon filled={!!track.starred} />

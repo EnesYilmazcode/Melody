@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useDeferredValue } from 'react'
 import { useTracks, useSearch } from '../state/useLibrary'
 import { parseYouTube, buildYtDlpCommand } from '../lib/youtube'
 import TrackRow from './TrackRow'
@@ -8,7 +8,11 @@ export default function SearchView() {
   const [query, setQuery] = useState('')
   const [autoCopied, setAutoCopied] = useState(false)
   const tracks = useTracks()
-  const results = useSearch(tracks, query)
+  // Defer the query fed to the (synchronous) fuzzy search so fast typing over a
+  // large library doesn't drop input frames — React can skip intermediate list
+  // renders and catch up when idle.
+  const deferredQuery = useDeferredValue(query)
+  const results = useSearch(tracks, deferredQuery)
   const q = query.trim()
   const yt = parseYouTube(query) // non-null when a YouTube link is pasted
 
