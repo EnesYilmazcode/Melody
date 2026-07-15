@@ -13,8 +13,20 @@ export default function Player() {
 
   return (
     <>
-      {/* Mini bar — always visible above the tab bar while something is loaded */}
-      <button className="mini" onClick={() => setExpanded(true)}>
+      {/* Mini bar — a button-like card, but a DIV so the inner play/next
+          <button>s aren't invalidly nested (which broke their taps on iOS). */}
+      <div
+        className="mini"
+        role="button"
+        tabIndex={0}
+        onClick={() => setExpanded(true)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            setExpanded(true)
+          }
+        }}
+      >
         <Artwork track={p.current} size={40} />
         <span className="mini__meta">
           <span className="mini__title">{p.current.title}</span>
@@ -29,7 +41,7 @@ export default function Player() {
           <button className="iconbtn" onClick={p.next} aria-label="Next"><NextIcon /></button>
         </span>
         <span className="mini__progress" style={{ width: `${(p.progress / (p.duration || 1)) * 100}%` }} />
-      </button>
+      </div>
 
       {expanded && <NowPlaying p={p} onClose={() => setExpanded(false)} />}
     </>
