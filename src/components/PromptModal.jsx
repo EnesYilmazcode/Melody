@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useDialog } from '../lib/useDialog'
 
 // A small centered text-entry modal — replaces window.prompt() so naming a
 // playlist feels native and on-brand instead of a browser system dialog.
@@ -13,14 +14,13 @@ export default function PromptModal({
 }) {
   const [value, setValue] = useState(initialValue)
   const inputRef = useRef(null)
+  // autoFocus:false — we focus the text input, not the form container.
+  const dialog = useDialog(onClose, { autoFocus: false })
 
   useEffect(() => {
     inputRef.current?.focus()
     inputRef.current?.select()
-    const onKey = (e) => e.key === 'Escape' && onClose()
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+  }, [])
 
   const submit = (e) => {
     e.preventDefault()
@@ -30,7 +30,15 @@ export default function PromptModal({
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={submit}>
+      <form
+        className="modal"
+        ref={dialog.ref}
+        onKeyDown={dialog.onKeyDown}
+        role="dialog"
+        aria-modal="true"
+        onClick={(e) => e.stopPropagation()}
+        onSubmit={submit}
+      >
         <h3 className="modal__title">{title}</h3>
         <input
           ref={inputRef}
