@@ -28,6 +28,11 @@ export function PlayerProvider({ children }) {
   const [loopMode, setLoopMode] = useState('off')
   const [progress, setProgress] = useState(0)
   const [duration, setDuration] = useState(0)
+  // Bumped to force the load effect to re-run even when index/current.id are
+  // unchanged — i.e. restart the current track on re-tap or a single-track
+  // loop-all wrap, without the setIndex(-1) bounce that made `current` briefly
+  // null (which flashed the Now Playing screen closed).
+  const [playToken, setPlayToken] = useState(0)
 
   const current = index >= 0 ? queue[index] : null
 
@@ -36,6 +41,7 @@ export function PlayerProvider({ children }) {
     if (!tracks.length) return
     setQueue(tracks)
     setIndex(startIndex)
+    setPlayToken((t) => t + 1) // reload even if startIndex === the current index
   }, [])
 
   // Insert a track right after the current one (Spotify's "Play next").
@@ -106,7 +112,7 @@ export function PlayerProvider({ children }) {
 
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [index, current?.id])
+  }, [index, current?.id, playToken])
 
   // Keep the native loop flag in sync when the mode changes mid-track.
   useEffect(() => {
@@ -143,10 +149,15 @@ export function PlayerProvider({ children }) {
   }, [current, play, pause])
 
   const next = useCallback(() => {
-    setIndex((i) => {
-      if (i + 1 < queue.length) return i + 1
-      return loopMode === 'all' ? 0 : i // stay put at the end when not looping all
-    })
+    // Single-track queue: the only "advance" is restarting the lone track, and
+    // only when looping all (otherwise stay put). A token bump handles it since
+    // the index can't change.
+    if (queue.length <= 1) {
+      if (loopMode === 'all') setPlayToken((t) => t + 1)
+      return
+    }
+    // Multi-track: functional updater keeps advances atomic under rapid taps.
+    setIndex((i) => (i + 1 < queue.length ? i + 1 : loopMode === 'all' ? 0 : i))
   }, [queue.length, loopMode])
 
   const prev = useCallback(() => {
@@ -154,6 +165,10 @@ export function PlayerProvider({ children }) {
     // Mirror Spotify: if >3s in, restart the song instead of jumping back.
     if (audio && audio.currentTime > 3) {
       audio.currentTime = 0
+      return
+    }
+    if (queue.length <= 1) {
+      if (loopMode === 'all') setPlayToken((t) => t + 1)
       return
     }
     setIndex((i) => (i > 0 ? i - 1 : loopMode === 'all' ? queue.length - 1 : i))
@@ -197,9 +212,11 @@ export function PlayerProvider({ children }) {
     if (index + 1 < queue.length) {
       setIndex((i) => i + 1)
     } else if (loopMode === 'all') {
-      // Re-trigger index 0 even if already there.
-      setIndex(-1)
-      requestAnimationFrame(() => setIndex(0))
+      // Wrap to the top and restart even if already at index 0 (single-track
+      // queue). The playToken bump forces the reload without nulling `current`,
+      // so Now Playing no longer flashes closed on every loop.
+      setIndex(0)
+      setPlayToken((t) => t + 1)
     } else {
       setIsPlaying(false)
     }
