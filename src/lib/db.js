@@ -215,7 +215,20 @@ export async function importBackup(data) {
   if (!data || !Array.isArray(data.tracks) || !Array.isArray(data.playlists)) {
     throw new Error('invalid-backup')
   }
-  const trackRows = data.tracks.filter((t) => t && typeof t.id === 'string')
+  // Beyond the id check, coerce the fields the UI and dedup depend on — a
+  // hand-edited or foreign-schema backup row missing `title` would otherwise
+  // crash the Library A-Z sort on every launch. The fallbacks are exactly
+  // addLocalTrack's normalizations, so re-importing the real file still
+  // triple-matches this row; a numeric `duration` passes through verbatim
+  // because rounding it would break that same match.
+  const trackRows = data.tracks
+    .filter((t) => t && typeof t.id === 'string')
+    .map((t) => ({
+      ...t,
+      title: typeof t.title === 'string' ? t.title : 'Unknown',
+      artist: typeof t.artist === 'string' ? t.artist : 'Imported',
+      duration: typeof t.duration === 'number' ? t.duration : 0,
+    }))
   const playlistRows = data.playlists.filter((p) => p && typeof p.name === 'string')
 
   await db.transaction('rw', db.tracks, db.playlists, async () => {

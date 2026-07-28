@@ -48,7 +48,7 @@ export default function LibraryView() {
     sort === 'plays'
       ? [...filtered].sort((a, b) => (b.playCount || 0) - (a.playCount || 0) || b.dateAdded - a.dateAdded)
       : sort === 'alpha'
-        ? [...filtered].sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }))
+        ? [...filtered].sort((a, b) => (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' }))
         : filtered
 
   const total = tracks.reduce((s, t) => s + (t.duration || 0), 0)
