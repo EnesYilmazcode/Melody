@@ -277,6 +277,16 @@ body {
 .plrow { display: flex; align-items: center; }
 .plrow .row { flex: 1; }
 
+/* Quiet backup pills under the playlist list — same recipe as
+   .lyrics__research, deliberately dim so they read as an afterthought
+   next to + New rather than a feature. */
+.backuprow { display: flex; gap: 8px; margin-top: 26px; }
+.backupbtn {
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px;
+  color: var(--text-dim); font-family: var(--font); font-size: 12px; font-weight: 600;
+  padding: 8px 16px; cursor: pointer;
+}
+
 /* ── bottom sheet ────────────────────────────────────────────── */
 .sheet-overlay {
   position: fixed; inset: 0; z-index: 60;

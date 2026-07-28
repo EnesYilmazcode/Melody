@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { usePlaylists, useTracks } from '../state/useLibrary'
-import { createPlaylist, renamePlaylist, deletePlaylist, removeFromPlaylist } from '../lib/db'
+import { createPlaylist, renamePlaylist, deletePlaylist, removeFromPlaylist, exportBackup, importBackup } from '../lib/db'
 import { usePlayer } from '../state/PlayerProvider'
 import { useLongPress } from '../lib/useLongPress'
 import { summarize } from '../lib/format'
@@ -17,8 +17,43 @@ export default function PlaylistsView() {
   const [actionsFor, setActionsFor] = useState(null) // playlist in the ⋯ sheet
   const [renaming, setRenaming] = useState(null)
   const [deleting, setDeleting] = useState(null)
+  const [backupNote, setBackupNote] = useState(null) // restore result / error
+  const restoreRef = useRef(null)
 
   const open = playlists?.find((p) => p.id === openId)
+
+  const onExport = async () => {
+    try {
+      const data = await exportBackup()
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `melody-backup-${new Date().toISOString().slice(0, 10)}.json`
+      a.click()
+      // Revoke once the download has had a moment to start — leaked object
+      // URLs pin their Blobs in memory for the app's whole lifetime.
+      setTimeout(() => URL.revokeObjectURL(url), 5000)
+    } catch {
+      // Export reads only local data, so failure is vanishingly rare; swallow
+      // it rather than let a rejection escape the handler.
+    }
+  }
+
+  const onRestore = async (e) => {
+    const file = e.target.files[0]
+    e.target.value = '' // reset so the same file can be re-picked later
+    if (!file) return
+    try {
+      // Parse here, outside importBackup's Dexie transaction — awaiting
+      // file.text() inside the transaction zone would kill it.
+      const parsed = JSON.parse(await file.text())
+      const { tracks, playlists: pls } = await importBackup(parsed)
+      setBackupNote(`${tracks} songs · ${pls} playlists restored`)
+    } catch {
+      setBackupNote("Couldn't read that backup file.")
+    }
+  }
 
   return (
     <section className="view">
@@ -42,6 +77,25 @@ export default function PlaylistsView() {
                 <PlaylistCard key={p.id} playlist={p} onOpen={() => setOpenId(p.id)} onLongPress={() => setActionsFor(p)} />
               ))}
             </div>
+          )}
+
+          {/* Quiet backup corner. The file input lives here (not in App) so the
+              Library tab keeps exactly one file input for the test harnesses. */}
+          <div className="backuprow">
+            <button className="backupbtn" onClick={onExport}>Export backup</button>
+            <button className="backupbtn" onClick={() => restoreRef.current?.click()}>Restore</button>
+          </div>
+          <input
+            ref={restoreRef}
+            type="file"
+            accept=".json,application/json"
+            hidden
+            onChange={onRestore}
+          />
+          {backupNote && (
+            <p className="importnote" role="status">
+              {backupNote}
+            </p>
           )}
         </>
       )}

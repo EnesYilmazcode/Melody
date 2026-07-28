@@ -127,7 +127,18 @@ export async function addLocalTrack({ title, artist, duration, blob, thumbnailUr
       )
       .first()
     if (dup) {
-      result = { id: dup.id, duplicate: true }
+      // A restored backup row carries metadata only — no audioBlobs entry. When
+      // the user re-imports the same file, the dedup match lands here; attach
+      // the bytes to the EXISTING id so playlists and stars keep pointing at
+      // it, and report duplicate:false so the import summary counts it as
+      // added (which, from the user's point of view, it just was).
+      const hasBlob = await db.audioBlobs.get(dup.id)
+      if (hasBlob) {
+        result = { id: dup.id, duplicate: true }
+      } else {
+        await db.audioBlobs.add({ id: dup.id, blob })
+        result = { id: dup.id, duplicate: false }
+      }
       return
     }
 
@@ -171,6 +182,98 @@ export async function deleteTrack(trackId) {
       }
     }
   })
+}
+
+// ── Backup / restore ────────────────────────────────────────────────────────
+// A backup is the catalog + playlists as plain JSON. Audio Blobs live only in
+// the separate audioBlobs store, so track rows serialize as-is; lyrics are
+// skipped because ensureLyrics re-fetches them lazily. Rows are exported
+// VERBATIM — `duration` especially is the exact float readDuration produced
+// and one leg of addLocalTrack's dedup triple-match, so rounding it would
+// break blob relink after a restore.
+
+export async function exportBackup() {
+  return {
+    schema: 3,
+    exportedAt: new Date().toISOString(),
+    tracks: await db.tracks.toArray(),
+    playlists: await db.playlists.toArray(),
+  }
+}
+
+/**
+ * Merge a backup produced by exportBackup() into the live database. Tracks
+ * merge by id (the live row keeps its catalog metadata, user state combines);
+ * playlists merge by name, appending unseen track ids. Restored tracks have no
+ * audio bytes yet — re-importing the same files reattaches them via the dedup
+ * match in addLocalTrack. Returns row counts for the status message.
+ */
+export async function importBackup(data) {
+  // Validate before the transaction opens: awaiting any non-Dexie promise
+  // inside the transaction zone would kill it, so everything here — and the
+  // JSON parsing in the UI handler — stays outside.
+  if (!data || !Array.isArray(data.tracks) || !Array.isArray(data.playlists)) {
+    throw new Error('invalid-backup')
+  }
+  const trackRows = data.tracks.filter((t) => t && typeof t.id === 'string')
+  const playlistRows = data.playlists.filter((p) => p && typeof p.name === 'string')
+
+  await db.transaction('rw', db.tracks, db.playlists, async () => {
+    for (const row of trackRows) {
+      const existing = await db.tracks.get(row.id)
+      if (existing) {
+        // Merge only user state — the live row's catalog metadata wins, same
+        // ownership split as upsertCatalog, just from the other side.
+        const lastPlayedAt =
+          existing.lastPlayedAt == null && row.lastPlayedAt == null
+            ? null
+            : Math.max(existing.lastPlayedAt ?? -Infinity, row.lastPlayedAt ?? -Infinity)
+        await db.tracks.update(row.id, {
+          playCount: Math.max(existing.playCount || 0, row.playCount || 0),
+          starred: (existing.starred || row.starred) ? 1 : 0, // 0/1 — Dexie can't index booleans
+          lastPlayedAt,
+          dateAdded: Math.min(existing.dateAdded ?? Date.now(), row.dateAdded ?? Date.now()),
+        })
+      } else {
+        // The restored row keeps its original id and srcType ('idb' for
+        // imported tracks) — that is what lets a later re-import of the same
+        // file relink its bytes to this exact row. Until then the player shows
+        // its graceful "Audio unavailable" state.
+        await db.tracks.add({
+          starred: 0,
+          playCount: 0,
+          lastPlayedAt: null,
+          dateAdded: Date.now(),
+          ...row,
+          starred: row.starred ? 1 : 0,
+        })
+      }
+    }
+
+    for (const pl of playlistRows) {
+      const existing = await db.playlists.where('name').equals(pl.name).first()
+      if (existing) {
+        // Append restored ids the playlist doesn't have yet, atomically (see
+        // addToPlaylist). Dangling ids are fine — PlaylistDetail filters them.
+        await db.playlists.where('id').equals(existing.id).modify((p) => {
+          for (const tid of pl.trackIds || []) {
+            if (!p.trackIds.includes(tid)) p.trackIds.push(tid)
+          }
+        })
+      } else {
+        // NEVER restore the old id: playlist ids are ++id auto-increment
+        // numbers, and inserting a foreign id collides with or corrupts the
+        // counter. Let Dexie assign a fresh one.
+        await db.playlists.add({
+          name: pl.name,
+          trackIds: [...(pl.trackIds || [])],
+          createdAt: pl.createdAt ?? Date.now(),
+        })
+      }
+    }
+  })
+
+  return { tracks: trackRows.length, playlists: playlistRows.length }
 }
 
 // ── Playlist mutations ──────────────────────────────────────────────────────
