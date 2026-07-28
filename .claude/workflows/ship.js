@@ -19,6 +19,9 @@ export const meta = {
 //          checked out if it already exists (never reset).
 // base:    merge base for review diffs (default origin/main).
 // testCmd: the green-gate every implementer and the reviewer must run.
+// Some invocation paths deliver args as a JSON-encoded string — accept both.
+const input = typeof args === 'string' ? JSON.parse(args) : args
+
 const {
   tasks = [],
   repo,
@@ -27,7 +30,7 @@ const {
   testCmd = 'npm run build',
   styleRules = 'Match the surrounding idiom exactly (comment density, naming, punctuation). Repo idiom always beats any general style preference. No AI filler words, no comments that narrate the diff.',
   researchAngles = null,
-} = args || {}
+} = input || {}
 
 if (!repo || !branch || !tasks.length) {
   throw new Error('ship needs args.repo, args.branch and a non-empty args.tasks')
