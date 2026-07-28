@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { PlayerProvider } from './state/PlayerProvider'
 import { UIProvider } from './state/UIProvider'
+import { useLongPress } from './lib/useLongPress'
 import SearchView from './components/SearchView'
 import LibraryView from './components/LibraryView'
 import PlaylistsView from './components/PlaylistsView'
@@ -13,8 +14,28 @@ const TABS = [
   { id: 'playlists', label: 'Playlists', icon: PlaylistIcon },
 ]
 
+// Hidden build readout: invisible in normal use; long-press anywhere on the
+// tab bar to peek at which deploy is running (commit + build time), so you can
+// confirm the PWA auto-updated without a version string cluttering the UI.
+// Auto-hides; tapping it dismisses it immediately.
+function VersionPeek({ onDismiss }) {
+  useEffect(() => {
+    const t = setTimeout(onDismiss, 5000)
+    return () => clearTimeout(t)
+  }, [onDismiss])
+  const { commit, builtAt } = __BUILD_INFO__
+  const built = new Date(builtAt)
+  return (
+    <button className="versionpeek" onClick={onDismiss}>
+      build {commit} · {built.toLocaleDateString()} {built.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+    </button>
+  )
+}
+
 export default function App() {
   const [tab, setTab] = useState('library')
+  const [showVersion, setShowVersion] = useState(false)
+  const { handlers: versionPress, suppressClick } = useLongPress(() => setShowVersion(true))
 
   return (
     <UIProvider>
@@ -28,13 +49,19 @@ export default function App() {
 
           {/* Floating dock: mini-player card stacked above the tab bar */}
           <div className="dock">
+            {showVersion && <VersionPeek onDismiss={() => setShowVersion(false)} />}
             <Player />
-            <nav className="tabbar">
+            {/* Long-press handlers live on the nav; suppressClick keeps the
+                long-press from also switching tabs on release. */}
+            <nav className="tabbar" {...versionPress}>
             {TABS.map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
                 className={`tab ${tab === id ? 'tab--active' : ''}`}
-                onClick={() => setTab(id)}
+                onClick={() => {
+                  if (suppressClick()) return
+                  setTab(id)
+                }}
               >
                 <Icon />
                 <span>{label}</span>

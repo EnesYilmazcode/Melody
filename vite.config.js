@@ -1,4 +1,5 @@
 import { rm } from 'node:fs/promises'
+import { execSync } from 'node:child_process'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
@@ -57,8 +58,23 @@ const cspPlugin = () => ({
 // preserves the repo name: https://enesyilmazcode.github.io/Melody/ — you'd
 // need base '/Melody/' (capital M), or rename the repo to lowercase. Don't
 // change this to '/Melody/' while deploying to Firebase — that would break it.
+// Build stamp shown by the hidden version readout (long-press the tab bar).
+// Frozen at build time, so on the phone it identifies exactly which deploy the
+// service worker has actually activated — the way to confirm auto-update worked
+// without any visible UI.
+const commit = (() => {
+  try {
+    return execSync('git rev-parse --short HEAD').toString().trim()
+  } catch {
+    return 'unknown'
+  }
+})()
+
 export default defineConfig(({ command }) => ({
   base: command === 'build' ? '/melody/' : '/',
+  define: {
+    __BUILD_INFO__: JSON.stringify({ commit, builtAt: new Date().toISOString() }),
+  },
   plugins: [
     // CSP only in the built HTML — injecting it in dev would break Vite HMR.
     command === 'build' && cspPlugin(),
