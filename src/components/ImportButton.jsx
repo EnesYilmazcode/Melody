@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { addLocalTrack, requestPersistentStorage, storageEstimate } from '../lib/db'
+import { useUI } from '../state/UIProvider'
 import { readDuration, parseFilename } from '../lib/audio'
 import { ensureLyrics } from '../lib/lyrics'
 import { fetchYouTubePreview } from '../lib/youtube'
@@ -10,13 +11,12 @@ import { fetchYouTubePreview } from '../lib/youtube'
 export default function ImportButton() {
   const inputRef = useRef(null)
   const [remaining, setRemaining] = useState(0)
-  const [notice, setNotice] = useState(null) // user-facing result/errors
+  const { showToast } = useUI() // results surface in the app-wide toast
 
   const onPick = async (e) => {
     const picked = [...e.target.files]
     e.target.value = '' // reset so the same file can be re-picked later
     if (!picked.length) return
-    setNotice(null)
 
     // Select-All in the a-Shell folder sweeps in .json/.txt sidecars alongside
     // the audio — the accept attr is advisory only on iOS, so filter here,
@@ -25,7 +25,7 @@ export default function ImportButton() {
       (f) => f.type.startsWith('audio/') || /\.(m4a|mp3|aac|wav|flac|ogg)$/i.test(f.name)
     )
     if (!files.length) {
-      setNotice('No new songs — everything already in your library.')
+      showToast('No new songs — everything already in your library.')
       return
     }
 
@@ -37,7 +37,7 @@ export default function ImportButton() {
     const totalBytes = files.reduce((n, f) => n + (f.size || 0), 0)
     const est = await storageEstimate()
     if (est?.quota && est.usage + totalBytes > est.quota * 0.95) {
-      setNotice("Not enough storage to import these. Free up space and try again.")
+      showToast("Not enough storage to import these. Free up space and try again.")
       return
     }
 
@@ -89,14 +89,14 @@ export default function ImportButton() {
     // Always leave a summary — a re-pick of the whole folder is a sync, and
     // "nothing happened" must still be an answer, never a silent no-op.
     if (outOfSpace) {
-      setNotice("Ran out of storage — not all tracks were imported.")
+      showToast("Ran out of storage — not all tracks were imported.")
     } else if (added === 0 && failed === 0) {
-      setNotice('No new songs — everything already in your library.')
+      showToast('No new songs — everything already in your library.')
     } else {
       const parts = [`${added} added`]
       if (skipped) parts.push(`${skipped} already in your library`)
       if (failed) parts.push(`${failed} couldn't be imported`)
-      setNotice(parts.join(' · '))
+      showToast(parts.join(' · '))
     }
   }
 
@@ -119,11 +119,6 @@ export default function ImportButton() {
         hidden
         onChange={onPick}
       />
-      {notice && (
-        <p className="importnote" role="status">
-          {notice}
-        </p>
-      )}
     </>
   )
 }

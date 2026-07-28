@@ -80,7 +80,6 @@ body {
 
 .importbtn { display: inline-flex; align-items: center; gap: 7px; flex-shrink: 0; margin-top: 6px; }
 .importbtn:disabled { opacity: 0.7; }
-.importnote { margin-top: 8px; font-size: 12px; color: var(--text-dim); max-width: 100%; }
 
 .spinner {
   width: 14px; height: 14px; border-radius: 50%;
@@ -94,6 +93,7 @@ body {
   letter-spacing: -0.03em;
   margin: 6px 0 0;
 }
+.view__meta { margin: 4px 0 0; font-size: 13px; }
 .eyebrow {
   font-size: 11px;
   font-weight: 700;
@@ -143,6 +143,9 @@ body {
 }
 
 /* segmented control */
+/* Row of segmented controls (Library: filter + sort). Wraps on narrow screens
+   instead of squeezing the pills. */
+.segrow { display: flex; flex-wrap: wrap; column-gap: 10px; align-items: center; }
 .segmented {
   display: inline-flex;
   background: var(--surface);
@@ -159,6 +162,12 @@ body {
   padding: 7px 16px; border-radius: 999px; cursor: pointer;
 }
 .segmented button.on { background: var(--text); color: var(--bg); }
+
+/* Library empty state — centered, unlike SearchView's left-aligned .empty. */
+.emptystate {
+  display: flex; flex-direction: column; align-items: center;
+  text-align: center; gap: 14px; padding-top: 48px;
+}
 
 /* ── search ──────────────────────────────────────────────────── */
 .searchbar {
@@ -267,13 +276,23 @@ body {
 
 /* ── playlists ───────────────────────────────────────────────── */
 .plcard {
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: center; gap: 14px;
   width: 100%; text-align: left;
   background: var(--surface); border: 1px solid var(--line);
-  border-radius: 14px; padding: 16px 18px; margin-bottom: 10px;
+  border-radius: 14px; padding: 14px 18px; margin-bottom: 10px;
   color: var(--text); cursor: pointer; font-family: var(--font);
 }
-.plcard__name { font-size: 16px; font-weight: 600; }
+/* 2×2 artwork mosaic; empty cells fall back to Artwork's gradient tiles. */
+.plcard__mosaic {
+  display: grid; grid-template-columns: repeat(2, 24px); gap: 2px;
+  border-radius: 8px; overflow: hidden; flex-shrink: 0;
+}
+.plcard__text { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.plcard__name {
+  font-size: 16px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.plcard__meta { font-size: 13px; }
 .plrow { display: flex; align-items: center; }
 .plrow .row { flex: 1; }
 
@@ -386,6 +405,27 @@ body {
   cursor: pointer;
   z-index: 5;
 }
+/* Transient status pill (import summaries, restore results). Same absolute-
+   inside-dock recipe as .versionpeek — never position:fixed, the dock carries
+   the safe-area inset and sits above the mini-player automatically. z-index 5
+   keeps it under .now (50), sheets (60), and modals (70). */
+.toast {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: calc(100% - 32px);
+  padding: 7px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 12px;
+  cursor: pointer;
+  z-index: 5;
+}
+
 /* Only show a divider above the tab bar when nothing is playing; when the mini
    card is present it provides the separation (and it's the dock's first child). */
 .dock > .tabbar:first-child { border-top: 1px solid var(--line); }

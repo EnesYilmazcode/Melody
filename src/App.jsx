@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { PlayerProvider } from './state/PlayerProvider'
-import { UIProvider } from './state/UIProvider'
+import { UIProvider, useUI } from './state/UIProvider'
 import { useLongPress } from './lib/useLongPress'
 import SearchView from './components/SearchView'
 import LibraryView from './components/LibraryView'
@@ -32,6 +32,29 @@ function VersionPeek({ onDismiss }) {
   )
 }
 
+// Transient status pill above the dock (import summaries, restore results).
+// Same lifecycle as VersionPeek: auto-hides, tap dismisses. Keyed by toast id
+// in ToastHost so a repeat of the same message restarts the timer.
+function Toast({ message, onDismiss }) {
+  useEffect(() => {
+    const t = setTimeout(onDismiss, 4000)
+    return () => clearTimeout(t)
+  }, [onDismiss])
+  return (
+    <button className="toast" role="status" onClick={onDismiss}>
+      {message}
+    </button>
+  )
+}
+
+// Rendered inside the dock, above VersionPeek. Must stay conditional — a
+// permanently-mounted element before the tabbar would break the
+// .dock > .tabbar:first-child divider rule.
+function ToastHost() {
+  const { toast, clearToast } = useUI()
+  return toast && <Toast key={toast.id} message={toast.message} onDismiss={clearToast} />
+}
+
 export default function App() {
   const [tab, setTab] = useState('library')
   const [showVersion, setShowVersion] = useState(false)
@@ -50,6 +73,7 @@ export default function App() {
           {/* Floating dock: mini-player card stacked above the tab bar */}
           <div className="dock">
             {showVersion && <VersionPeek onDismiss={() => setShowVersion(false)} />}
+            <ToastHost />
             <Player />
             {/* Long-press handlers live on the nav; suppressClick keeps the
                 long-press from also switching tabs on release. */}

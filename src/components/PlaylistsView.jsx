@@ -2,9 +2,11 @@ import { useRef, useState } from 'react'
 import { usePlaylists, useTracks } from '../state/useLibrary'
 import { createPlaylist, renamePlaylist, deletePlaylist, removeFromPlaylist, exportBackup, importBackup } from '../lib/db'
 import { usePlayer } from '../state/PlayerProvider'
+import { useUI } from '../state/UIProvider'
 import { useLongPress } from '../lib/useLongPress'
-import { summarize } from '../lib/format'
+import { summarize, formatTotalDuration } from '../lib/format'
 import { shuffle } from '../lib/shuffle'
+import Artwork from './Artwork'
 import TrackRow from './TrackRow'
 import PromptModal from './PromptModal'
 import ConfirmModal from './ConfirmModal'
@@ -12,12 +14,13 @@ import PlaylistActionsSheet from './PlaylistActionsSheet'
 
 export default function PlaylistsView() {
   const playlists = usePlaylists()
+  const allTracks = useTracks() // resolves each card's mosaic + duration meta
+  const { showToast } = useUI()
   const [openId, setOpenId] = useState(null)
   const [creating, setCreating] = useState(false)
   const [actionsFor, setActionsFor] = useState(null) // playlist in the ⋯ sheet
   const [renaming, setRenaming] = useState(null)
   const [deleting, setDeleting] = useState(null)
-  const [backupNote, setBackupNote] = useState(null) // restore result / error
   const restoreRef = useRef(null)
 
   const open = playlists?.find((p) => p.id === openId)
@@ -49,15 +52,19 @@ export default function PlaylistsView() {
       // file.text() inside the transaction zone would kill it.
       const parsed = JSON.parse(await file.text())
       const { tracks, playlists: pls } = await importBackup(parsed)
-      setBackupNote(`${tracks} songs · ${pls} playlists restored`)
+      showToast(`${tracks} songs · ${pls} playlists restored`)
     } catch {
-      setBackupNote("Couldn't read that backup file.")
+      showToast("Couldn't read that backup file.")
     }
   }
 
+  // Resolve ids the same way PlaylistDetail does, dropping dangling ids —
+  // deleted or restored-but-not-reimported tracks must not inflate the counts.
+  const byId = allTracks && new Map(allTracks.map((t) => [t.id, t]))
+
   return (
     <section className="view">
-      {playlists === undefined ? (
+      {playlists === undefined || allTracks === undefined ? (
         <p className="dim">Loading…</p>
       ) : open ? (
         <PlaylistDetail playlist={open} onBack={() => setOpenId(null)} onActions={() => setActionsFor(open)} />
@@ -74,7 +81,13 @@ export default function PlaylistsView() {
           ) : (
             <div className="list">
               {playlists.map((p) => (
-                <PlaylistCard key={p.id} playlist={p} onOpen={() => setOpenId(p.id)} onLongPress={() => setActionsFor(p)} />
+                <PlaylistCard
+                  key={p.id}
+                  playlist={p}
+                  tracks={p.trackIds.map((id) => byId.get(id)).filter(Boolean)}
+                  onOpen={() => setOpenId(p.id)}
+                  onLongPress={() => setActionsFor(p)}
+                />
               ))}
             </div>
           )}
@@ -92,11 +105,6 @@ export default function PlaylistsView() {
             hidden
             onChange={onRestore}
           />
-          {backupNote && (
-            <p className="importnote" role="status">
-              {backupNote}
-            </p>
-          )}
         </>
       )}
 
@@ -149,16 +157,31 @@ export default function PlaylistsView() {
   )
 }
 
-function PlaylistCard({ playlist, onOpen, onLongPress }) {
+function PlaylistCard({ playlist, tracks, onOpen, onLongPress }) {
   const lp = useLongPress(onLongPress)
+  const n = tracks.length
+  const dur = formatTotalDuration(tracks.reduce((s, t) => s + (t.duration || 0), 0))
   return (
     <button
       className="plcard"
       {...lp.handlers}
       onClick={() => { if (!lp.suppressClick()) onOpen() }}
     >
-      <span className="plcard__name">{playlist.name}</span>
-      <span className="dim">{playlist.trackIds.length} {playlist.trackIds.length === 1 ? 'track' : 'tracks'}</span>
+      {/* Spans only inside the card button — nested interactive elements broke
+          iOS taps before (ad39cc8). Artwork renders a deterministic gradient
+          for undefined tracks, which is the intended look for 0–3-song lists. */}
+      <span className="plcard__mosaic">
+        <Artwork track={tracks[0]} size={24} radius={0} />
+        <Artwork track={tracks[1]} size={24} radius={0} />
+        <Artwork track={tracks[2]} size={24} radius={0} />
+        <Artwork track={tracks[3]} size={24} radius={0} />
+      </span>
+      <span className="plcard__text">
+        <span className="plcard__name">{playlist.name}</span>
+        <span className="dim plcard__meta">
+          {n} {n === 1 ? 'song' : 'songs'}{dur && ` · ${dur}`}
+        </span>
+      </span>
     </button>
   )
 }
