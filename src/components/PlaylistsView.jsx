@@ -4,7 +4,7 @@ import { createPlaylist, renamePlaylist, deletePlaylist, removeFromPlaylist, exp
 import { usePlayer } from '../state/PlayerProvider'
 import { useUI } from '../state/UIProvider'
 import { useLongPress } from '../lib/useLongPress'
-import { summarize, formatTotalDuration } from '../lib/format'
+import { summarize } from '../lib/format'
 import { shuffle } from '../lib/shuffle'
 import Artwork from './Artwork'
 import TrackRow from './TrackRow'
@@ -38,8 +38,7 @@ export default function PlaylistsView() {
       // URLs pin their Blobs in memory for the app's whole lifetime.
       setTimeout(() => URL.revokeObjectURL(url), 5000)
     } catch {
-      // Export reads only local data, so failure is vanishingly rare; swallow
-      // it rather than let a rejection escape the handler.
+      showToast("Couldn't export the backup.")
     }
   }
 
@@ -159,8 +158,6 @@ export default function PlaylistsView() {
 
 function PlaylistCard({ playlist, tracks, onOpen, onLongPress }) {
   const lp = useLongPress(onLongPress)
-  const n = tracks.length
-  const dur = formatTotalDuration(tracks.reduce((s, t) => s + (t.duration || 0), 0))
   return (
     <button
       className="plcard"
@@ -178,9 +175,7 @@ function PlaylistCard({ playlist, tracks, onOpen, onLongPress }) {
       </span>
       <span className="plcard__text">
         <span className="plcard__name">{playlist.name}</span>
-        <span className="dim plcard__meta">
-          {n} {n === 1 ? 'song' : 'songs'}{dur && ` · ${dur}`}
-        </span>
+        <span className="dim plcard__meta">{summarize(tracks)}</span>
       </span>
     </button>
   )

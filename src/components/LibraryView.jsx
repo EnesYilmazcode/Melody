@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useTracks } from '../state/useLibrary'
 import { usePlayer } from '../state/PlayerProvider'
 import { shuffle } from '../lib/shuffle'
-import { formatTotalDuration } from '../lib/format'
+import { summarize } from '../lib/format'
 import TrackRow from './TrackRow'
 import ImportButton from './ImportButton'
 
@@ -51,9 +51,6 @@ export default function LibraryView() {
         ? [...filtered].sort((a, b) => (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' }))
         : filtered
 
-  const total = tracks.reduce((s, t) => s + (t.duration || 0), 0)
-  const dur = formatTotalDuration(total)
-
   return (
     <section className="view">
       <div className="view__head">
@@ -61,10 +58,7 @@ export default function LibraryView() {
           <div>
             <p className="eyebrow">Your music</p>
             <h1>Library</h1>
-            <p className="view__meta dim">
-              {tracks.length} {tracks.length === 1 ? 'song' : 'songs'}
-              {dur && ` · ${dur}`}
-            </p>
+            <p className="view__meta dim">{summarize(tracks)}</p>
           </div>
           <ImportButton />
         </div>

@@ -25,7 +25,7 @@ export default function ImportButton() {
       (f) => f.type.startsWith('audio/') || /\.(m4a|mp3|aac|wav|flac|ogg)$/i.test(f.name)
     )
     if (!files.length) {
-      showToast('No new songs — everything already in your library.')
+      showToast('No audio files in that selection.')
       return
     }
 

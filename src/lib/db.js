@@ -215,6 +215,11 @@ export async function importBackup(data) {
   if (!data || !Array.isArray(data.tracks) || !Array.isArray(data.playlists)) {
     throw new Error('invalid-backup')
   }
+  // Refuse backups from a future schema — importing one silently could apply
+  // this version's merge semantics to fields it doesn't understand.
+  if (typeof data.schema === 'number' && data.schema > 3) {
+    throw new Error('invalid-backup')
+  }
   // Beyond the id check, coerce the fields the UI and dedup depend on — a
   // hand-edited or foreign-schema backup row missing `title` would otherwise
   // crash the Library A-Z sort on every launch. The fallbacks are exactly
@@ -253,7 +258,6 @@ export async function importBackup(data) {
         // file relink its bytes to this exact row. Until then the player shows
         // its graceful "Audio unavailable" state.
         await db.tracks.add({
-          starred: 0,
           playCount: 0,
           lastPlayedAt: null,
           dateAdded: Date.now(),
