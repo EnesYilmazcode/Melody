@@ -13,10 +13,21 @@ export default function ImportButton() {
   const [notice, setNotice] = useState(null) // user-facing result/errors
 
   const onPick = async (e) => {
-    const files = [...e.target.files]
+    const picked = [...e.target.files]
     e.target.value = '' // reset so the same file can be re-picked later
-    if (!files.length) return
+    if (!picked.length) return
     setNotice(null)
+
+    // Select-All in the a-Shell folder sweeps in .json/.txt sidecars alongside
+    // the audio — the accept attr is advisory only on iOS, so filter here,
+    // before the quota pre-flight and the remaining counter see the list.
+    const files = picked.filter(
+      (f) => f.type.startsWith('audio/') || /\.(m4a|mp3|aac|wav|flac|ogg)$/i.test(f.name)
+    )
+    if (!files.length) {
+      setNotice('No new songs — everything already in your library.')
+      return
+    }
 
     await requestPersistentStorage() // ask iOS to keep the library durable
 
@@ -31,6 +42,7 @@ export default function ImportButton() {
     }
 
     setRemaining(files.length)
+    let added = 0
     let skipped = 0
     let failed = 0
     let outOfSpace = false
@@ -56,6 +68,9 @@ export default function ImportButton() {
           skipped++
           continue
         }
+        // Counted explicitly rather than derived — the out-of-space break below
+        // exits the loop early, which would make length arithmetic lie.
+        added++
         // fetch lyrics in the background (cached for offline); don't block import
         ensureLyrics({ id, title, artist, duration }).catch(() => {})
       } catch (err) {
@@ -71,14 +86,17 @@ export default function ImportButton() {
     }
     setRemaining(0)
 
-    // Only surface something when it's worth telling the user about.
+    // Always leave a summary — a re-pick of the whole folder is a sync, and
+    // "nothing happened" must still be an answer, never a silent no-op.
     if (outOfSpace) {
       setNotice("Ran out of storage — not all tracks were imported.")
+    } else if (added === 0 && failed === 0) {
+      setNotice('No new songs — everything already in your library.')
     } else {
-      const parts = []
+      const parts = [`${added} added`]
       if (skipped) parts.push(`${skipped} already in your library`)
       if (failed) parts.push(`${failed} couldn't be imported`)
-      setNotice(parts.length ? parts.join(' · ') : null)
+      setNotice(parts.join(' · '))
     }
   }
 
