@@ -1,10 +1,12 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { usePlaylists, useTracks } from '../state/useLibrary'
-import { createPlaylist, renamePlaylist, deletePlaylist, removeFromPlaylist } from '../lib/db'
+import { createPlaylist, renamePlaylist, deletePlaylist, exportBackup, importBackup } from '../lib/db'
 import { usePlayer } from '../state/PlayerProvider'
+import { useUI } from '../state/UIProvider'
 import { useLongPress } from '../lib/useLongPress'
 import { summarize, formatTime } from '../lib/format'
 import { shuffle } from '../lib/shuffle'
+import Artwork from './Artwork'
 import TrackRow from './TrackRow'
 import PromptModal from './PromptModal'
 import ConfirmModal from './ConfirmModal'
@@ -12,17 +14,68 @@ import PlaylistActionsSheet from './PlaylistActionsSheet'
 
 export default function PlaylistsView() {
   const playlists = usePlaylists()
+  const allTracks = useTracks() // resolves each card's mosaic + duration meta
+  const { showToast } = useUI()
   const [openId, setOpenId] = useState(null)
   const [creating, setCreating] = useState(false)
   const [actionsFor, setActionsFor] = useState(null) // playlist in the ⋯ sheet
   const [renaming, setRenaming] = useState(null)
   const [deleting, setDeleting] = useState(null)
+  const restoreRef = useRef(null)
 
   const open = playlists?.find((p) => p.id === openId)
 
+  const onExport = async () => {
+    try {
+      const data = await exportBackup()
+      const name = `melody-backup-${new Date().toISOString().slice(0, 10)}.json`
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+      // On iPhone the share sheet is the reliable way out ("Save to Files");
+      // a home-screen app can't follow a download link.
+      const file = new File([blob], name, { type: 'application/json' })
+      if (navigator.canShare?.({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file] })
+        } catch (err) {
+          if (err?.name !== 'AbortError') throw err
+        }
+        return
+      }
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = name
+      a.click()
+      // Revoke once the download has had a moment to start — leaked object
+      // URLs pin their Blobs in memory for the app's whole lifetime.
+      setTimeout(() => URL.revokeObjectURL(url), 5000)
+    } catch {
+      showToast("Couldn't export the backup.")
+    }
+  }
+
+  const onRestore = async (e) => {
+    const file = e.target.files[0]
+    e.target.value = '' // reset so the same file can be re-picked later
+    if (!file) return
+    try {
+      // Parse here, outside importBackup's Dexie transaction — awaiting
+      // file.text() inside the transaction zone would kill it.
+      const parsed = JSON.parse(await file.text())
+      const { tracks, playlists: pls, podcasts } = await importBackup(parsed)
+      showToast(`${tracks} songs · ${pls} playlists${podcasts ? ` · ${podcasts} shows` : ''} restored`)
+    } catch {
+      showToast("Couldn't read that backup file.")
+    }
+  }
+
+  // Resolve ids the same way PlaylistDetail does, dropping dangling ids —
+  // deleted or restored-but-not-reimported tracks must not inflate the counts.
+  const byId = allTracks && new Map(allTracks.map((t) => [t.id, t]))
+
   return (
     <section className="view">
-      {playlists === undefined ? (
+      {playlists === undefined || allTracks === undefined ? (
         <p className="dim">Loading…</p>
       ) : open ? (
         <PlaylistDetail playlist={open} onBack={() => setOpenId(null)} onActions={() => setActionsFor(open)} />
@@ -39,10 +92,30 @@ export default function PlaylistsView() {
           ) : (
             <div className="list">
               {playlists.map((p) => (
-                <PlaylistCard key={p.id} playlist={p} onOpen={() => setOpenId(p.id)} onLongPress={() => setActionsFor(p)} />
+                <PlaylistCard
+                  key={p.id}
+                  playlist={p}
+                  tracks={p.trackIds.map((id) => byId.get(id)).filter(Boolean)}
+                  onOpen={() => setOpenId(p.id)}
+                  onLongPress={() => setActionsFor(p)}
+                />
               ))}
             </div>
           )}
+
+          {/* Quiet backup corner. The file input lives here (not in App) so the
+              Library tab keeps exactly one file input for the test harnesses. */}
+          <div className="backuprow">
+            <button className="backupbtn" onClick={onExport}>Export backup</button>
+            <button className="backupbtn" onClick={() => restoreRef.current?.click()}>Restore</button>
+          </div>
+          <input
+            ref={restoreRef}
+            type="file"
+            accept=".json,application/json"
+            hidden
+            onChange={onRestore}
+          />
         </>
       )}
 
@@ -95,7 +168,7 @@ export default function PlaylistsView() {
   )
 }
 
-function PlaylistCard({ playlist, onOpen, onLongPress }) {
+function PlaylistCard({ playlist, tracks, onOpen, onLongPress }) {
   const lp = useLongPress(onLongPress)
   return (
     <button
@@ -103,8 +176,19 @@ function PlaylistCard({ playlist, onOpen, onLongPress }) {
       {...lp.handlers}
       onClick={() => { if (!lp.suppressClick()) onOpen() }}
     >
-      <span className="plcard__name">{playlist.name}</span>
-      <span className="dim">{playlist.trackIds.length} {playlist.trackIds.length === 1 ? 'track' : 'tracks'}</span>
+      {/* Spans only inside the card button — nested interactive elements broke
+          iOS taps before (ad39cc8). Artwork renders a deterministic gradient
+          for undefined tracks, which is the intended look for 0–3-song lists. */}
+      <span className="plcard__mosaic">
+        <Artwork track={tracks[0]} size={24} radius={0} />
+        <Artwork track={tracks[1]} size={24} radius={0} />
+        <Artwork track={tracks[2]} size={24} radius={0} />
+        <Artwork track={tracks[3]} size={24} radius={0} />
+      </span>
+      <span className="plcard__text">
+        <span className="plcard__name">{playlist.name}</span>
+        <span className="dim plcard__meta">{summarize(tracks)}</span>
+      </span>
     </button>
   )
 }
@@ -153,13 +237,9 @@ function PlaylistDetail({ playlist, onBack, onActions }) {
           )}
           <div className="list">
             {tracks.map((t) => (
-              <div key={t.id} className="plrow">
-                <TrackRow track={t} list={tracks} playOpts={inOrder} />
-                <button className="iconbtn" onClick={() => removeFromPlaylist(playlist.id, t.id)} aria-label="Remove from playlist">−</button>
-              </div>
+              <TrackRow key={t.id} track={t} list={tracks} playOpts={inOrder} playlist={playlist} />
             ))}
           </div>
-          <p className="dim hint">Tip: set the loop button to ⟳ all to loop this playlist.</p>
         </>
       ) : (
         <p className="dim">Empty playlist. Add tracks from Library or Search using the ⋯ menu.</p>

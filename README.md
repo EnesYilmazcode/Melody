@@ -99,10 +99,18 @@ That's it: the song is now in your library with cover art and lyrics, playable o
 
 > yt-dlp occasionally breaks when YouTube changes things. Fix it with `pip install -U yt-dlp`.
 
+## Updating & data safety
+
+- **The app updates itself.** Every time you open it, a foreground service-worker check looks for a new build (and again every hour while it stays open) and applies it in place. You never need to reinstall anything.
+- **Never delete the home-screen icon.** On iOS the app's storage belongs to that icon, so removing it can wipe your whole library along with it. There is nothing a reinstall fixes that reopening does not.
+- **Safe force-refresh:** swipe the app away in the app switcher and reopen it.
+- **Backup:** on the Playlists tab, tap **Export backup** to save a JSON file of your catalog and playlists (titles, stars, play counts, playlist contents). Audio bytes are not included, so the file stays tiny.
+- **Restore:** on the Playlists tab, tap **Restore** and pick that JSON, then re-import the same audio files from Files. The bytes reattach to the same tracks, so your playlists and stars come back intact.
+
 ## Known iOS limitations (by design)
 
 - Background audio stops if you **force-quit** the PWA (fine for screen-off-in-pocket listening).
-- The home-screen icon is cached by iOS. To refresh it after changes, remove and re-add the app.
+- The home-screen icon artwork is cached by iOS and can lag behind a new build. Do **not** remove and re-add the app to refresh it: that can delete the app's storage and your library with it. The stale artwork is cosmetic and clears on its own; the app itself always updates in place (see above).
 
 ## Project layout
 

@@ -135,7 +135,18 @@ export async function addLocalTrack({ title, artist, duration, blob, thumbnailUr
       )
       .first()
     if (dup) {
-      result = { id: dup.id, duplicate: true }
+      // A restored backup row carries metadata only — no audioBlobs entry. When
+      // the user re-imports the same file, the dedup match lands here; attach
+      // the bytes to the EXISTING id so playlists and stars keep pointing at
+      // it, and report duplicate:false so the import summary counts it as
+      // added (which, from the user's point of view, it just was).
+      const hasBlob = await db.audioBlobs.get(dup.id)
+      if (hasBlob) {
+        result = { id: dup.id, duplicate: true }
+      } else {
+        await db.audioBlobs.add({ id: dup.id, blob })
+        result = { id: dup.id, duplicate: false }
+      }
       return
     }
 
@@ -179,6 +190,144 @@ export async function deleteTrack(trackId) {
       }
     }
   })
+}
+
+// ── Backup / restore ────────────────────────────────────────────────────────
+// A backup is the catalog + playlists as plain JSON. Audio Blobs live only in
+// the separate audioBlobs store, so track rows serialize as-is; lyrics are
+// skipped because ensureLyrics re-fetches them lazily. Rows are exported
+// VERBATIM — `duration` especially is the exact float readDuration produced
+// and one leg of addLocalTrack's dedup triple-match, so rounding it would
+// break blob relink after a restore.
+
+export async function exportBackup() {
+  return {
+    schema: 4,
+    exportedAt: new Date().toISOString(),
+    tracks: await db.tracks.toArray(),
+    playlists: await db.playlists.toArray(),
+    // v4: followed shows and episode progress. Downloads aren't in the file,
+    // so every episode comes back as not downloaded.
+    podcasts: await db.podcasts.toArray(),
+    episodes: (await db.episodes.toArray()).map((e) => ({ ...e, downloaded: 0 })),
+  }
+}
+
+/**
+ * Merge a backup produced by exportBackup() into the live database. Tracks
+ * merge by id (the live row keeps its catalog metadata, user state combines);
+ * playlists merge by name, appending unseen track ids. Restored tracks have no
+ * audio bytes yet — re-importing the same files reattaches them via the dedup
+ * match in addLocalTrack. Returns row counts for the status message.
+ */
+export async function importBackup(data) {
+  // Validate before the transaction opens: awaiting any non-Dexie promise
+  // inside the transaction zone would kill it, so everything here — and the
+  // JSON parsing in the UI handler — stays outside.
+  if (!data || !Array.isArray(data.tracks) || !Array.isArray(data.playlists)) {
+    throw new Error('invalid-backup')
+  }
+  // Refuse backups from a future schema — importing one silently could apply
+  // this version's merge semantics to fields it doesn't understand.
+  if (typeof data.schema === 'number' && data.schema > 4) {
+    throw new Error('invalid-backup')
+  }
+  // Beyond the id check, coerce the fields the UI and dedup depend on — a
+  // hand-edited or foreign-schema backup row missing `title` would otherwise
+  // crash the Library A-Z sort on every launch. The fallbacks are exactly
+  // addLocalTrack's normalizations, so re-importing the real file still
+  // triple-matches this row; a numeric `duration` passes through verbatim
+  // because rounding it would break that same match.
+  const trackRows = data.tracks
+    .filter((t) => t && typeof t.id === 'string')
+    .map((t) => ({
+      ...t,
+      title: typeof t.title === 'string' ? t.title : 'Unknown',
+      artist: typeof t.artist === 'string' ? t.artist : 'Imported',
+      duration: typeof t.duration === 'number' ? t.duration : 0,
+    }))
+  const playlistRows = data.playlists.filter((p) => p && typeof p.name === 'string')
+  // Schema 3 backups have no podcasts; treat them as empty.
+  const podcastRows = (Array.isArray(data.podcasts) ? data.podcasts : []).filter((p) => p && typeof p.id === 'string')
+  const episodeRows = (Array.isArray(data.episodes) ? data.episodes : []).filter(
+    (e) => e && typeof e.id === 'string' && typeof e.podcastId === 'string' && typeof e.audioUrl === 'string',
+  )
+
+  await db.transaction('rw', db.tracks, db.playlists, db.podcasts, db.episodes, async () => {
+    for (const row of trackRows) {
+      const existing = await db.tracks.get(row.id)
+      if (existing) {
+        // Merge only user state — the live row's catalog metadata wins, same
+        // ownership split as upsertCatalog, just from the other side.
+        const lastPlayedAt =
+          existing.lastPlayedAt == null && row.lastPlayedAt == null
+            ? null
+            : Math.max(existing.lastPlayedAt ?? -Infinity, row.lastPlayedAt ?? -Infinity)
+        await db.tracks.update(row.id, {
+          playCount: Math.max(existing.playCount || 0, row.playCount || 0),
+          starred: (existing.starred || row.starred) ? 1 : 0, // 0/1 — Dexie can't index booleans
+          lastPlayedAt,
+          dateAdded: Math.min(existing.dateAdded ?? Date.now(), row.dateAdded ?? Date.now()),
+        })
+      } else {
+        // The restored row keeps its original id and srcType ('idb' for
+        // imported tracks) — that is what lets a later re-import of the same
+        // file relink its bytes to this exact row. Until then the player shows
+        // its graceful "Audio unavailable" state.
+        await db.tracks.add({
+          playCount: 0,
+          lastPlayedAt: null,
+          dateAdded: Date.now(),
+          ...row,
+          starred: row.starred ? 1 : 0,
+        })
+      }
+    }
+
+    for (const pl of playlistRows) {
+      const existing = await db.playlists.where('name').equals(pl.name).first()
+      if (existing) {
+        // Append restored ids the playlist doesn't have yet, atomically (see
+        // addToPlaylist). Dangling ids are fine — PlaylistDetail filters them.
+        await db.playlists.where('id').equals(existing.id).modify((p) => {
+          for (const tid of pl.trackIds || []) {
+            if (!p.trackIds.includes(tid)) p.trackIds.push(tid)
+          }
+          if (!p.resume && pl.resume) p.resume = pl.resume
+        })
+      } else {
+        // NEVER restore the old id: playlist ids are ++id auto-increment
+        // numbers, and inserting a foreign id collides with or corrupts the
+        // counter. Let Dexie assign a fresh one.
+        await db.playlists.add({
+          name: pl.name,
+          trackIds: [...(pl.trackIds || [])],
+          createdAt: pl.createdAt ?? Date.now(),
+          ...(pl.resume ? { resume: pl.resume } : {}),
+        })
+      }
+    }
+
+    // Shows merge by feed URL. For episodes the further-along progress wins,
+    // and a live download is never marked as missing.
+    for (const show of podcastRows) {
+      if (!(await db.podcasts.get(show.id))) await db.podcasts.add(show)
+    }
+    for (const ep of episodeRows) {
+      const existing = await db.episodes.get(ep.id)
+      if (!existing) {
+        await db.episodes.add({ ...ep, downloaded: 0 })
+      } else {
+        await db.episodes.update(ep.id, {
+          played: existing.played || ep.played ? 1 : 0,
+          position: Math.max(existing.position || 0, ep.position || 0),
+          lastPlayedAt: Math.max(existing.lastPlayedAt || 0, ep.lastPlayedAt || 0) || null,
+        })
+      }
+    }
+  })
+
+  return { tracks: trackRows.length, playlists: playlistRows.length, podcasts: podcastRows.length }
 }
 
 // ── Playlist mutations ──────────────────────────────────────────────────────

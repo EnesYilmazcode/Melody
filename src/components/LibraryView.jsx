@@ -2,17 +2,54 @@ import { useState } from 'react'
 import { useTracks } from '../state/useLibrary'
 import { usePlayer } from '../state/PlayerProvider'
 import { shuffle } from '../lib/shuffle'
+import { summarize } from '../lib/format'
 import TrackRow from './TrackRow'
 import ImportButton from './ImportButton'
+
+const SORT_KEY = 'melody:librarySort'
+const SORTS = [
+  { value: 'recent', label: 'Recent' },
+  { value: 'plays', label: 'Most played' },
+  { value: 'alpha', label: 'A–Z' },
+]
+
+// Reads must be try/catch-wrapped (private-mode Safari throws) and live in a
+// pure lazy initializer so StrictMode's double render stays side-effect free.
+function readSavedSort() {
+  try {
+    const v = localStorage.getItem(SORT_KEY)
+    return v === 'plays' || v === 'alpha' ? v : 'recent'
+  } catch {
+    return 'recent'
+  }
+}
 
 export default function LibraryView() {
   const tracks = useTracks()
   const { playQueue } = usePlayer()
   const [showStarred, setShowStarred] = useState(false)
+  const [sort, setSort] = useState(readSavedSort)
+
+  const pickSort = (value) => {
+    setSort(value)
+    try {
+      localStorage.setItem(SORT_KEY, value)
+    } catch {
+      // Private-mode Safari: the choice still applies for this session.
+    }
+  }
 
   if (tracks === undefined) return <p className="dim">Loading…</p>
 
-  const shown = showStarred ? tracks.filter((t) => t.starred) : tracks
+  const filtered = showStarred ? tracks.filter((t) => t.starred) : tracks
+  // useTracks already returns dateAdded-desc, so 'recent' is the array as-is.
+  // The others must copy first — live-query arrays must never be sorted in place.
+  const shown =
+    sort === 'plays'
+      ? [...filtered].sort((a, b) => (b.playCount || 0) - (a.playCount || 0) || b.dateAdded - a.dateAdded)
+      : sort === 'alpha'
+        ? [...filtered].sort((a, b) => (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' }))
+        : filtered
 
   return (
     <section className="view">
@@ -21,13 +58,27 @@ export default function LibraryView() {
           <div>
             <p className="eyebrow">Your music</p>
             <h1>Library</h1>
+            {tracks.length > 0 && <p className="view__meta dim">{summarize(tracks)}</p>}
           </div>
-          <ImportButton />
+          {/* An empty library shows its own, bigger Import in the empty state. */}
+          {tracks.length > 0 && <ImportButton />}
         </div>
-        <div className="segmented">
-          <button className={!showStarred ? 'on' : ''} onClick={() => setShowStarred(false)}>All</button>
-          <button className={showStarred ? 'on' : ''} onClick={() => setShowStarred(true)}>Favorites</button>
-        </div>
+        {tracks.length > 0 && (
+          <div className="segrow">
+            <div className="segmented">
+              <button className={!showStarred ? 'on' : ''} onClick={() => setShowStarred(false)}>All</button>
+              <button className={showStarred ? 'on' : ''} onClick={() => setShowStarred(true)}>Favorites</button>
+            </div>
+            {/* One tap cycles the sort; a second segmented row cost a fifth of the screen. */}
+            <button
+              className="sortbtn"
+              onClick={() => pickSort(SORTS[(SORTS.findIndex((o) => o.value === sort) + 1) % SORTS.length].value)}
+              aria-label={`Sort: ${SORTS.find((o) => o.value === sort).label}. Tap to change.`}
+            >
+              <SortGlyph /> {SORTS.find((o) => o.value === sort).label}
+            </button>
+          </div>
+        )}
       </div>
 
       {shown.length > 0 ? (
@@ -46,8 +97,14 @@ export default function LibraryView() {
             ))}
           </div>
         </>
+      ) : showStarred ? (
+        <p className="dim">No favorites yet — tap the star on any track.</p>
       ) : (
-        <p className="dim">{showStarred ? 'No favorites yet — tap the star on any track.' : 'Your library is empty.'}</p>
+        <div className="emptystate">
+          <NotesGlyph />
+          <p className="dim">Nothing here yet. Import songs from the Files app to build your library.</p>
+          <ImportButton />
+        </div>
       )}
     </section>
   )
@@ -58,4 +115,16 @@ function PlayGlyph() {
 }
 function ShuffleGlyph() {
   return <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 3h5v5M21 3l-7 7M4 20l16-16M16 21h5v-5M15 15l6 6M4 4l5 5" /></svg>
+}
+function NotesGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--text-faint)' }} aria-hidden="true">
+      <path d="M9 18V6l10-2v12" />
+      <circle cx="6" cy="18" r="3" />
+      <circle cx="16" cy="16" r="3" />
+    </svg>
+  )
+}
+function SortGlyph() {
+  return <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 4v16M3 16l4 4 4-4M17 20V4M13 8l4-4 4 4" /></svg>
 }
