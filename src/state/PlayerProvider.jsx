@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react'
 import { bumpPlayCount, getAudioBlob, getPosition, savePosition, setPlayed, savePlaylistResume } from '../lib/db'
 import { isLongForm } from '../lib/podcasts'
+import { ytThumbId } from '../lib/youtube'
 
 const PlayerContext = createContext(null)
 export const usePlayer = () => useContext(PlayerContext)
@@ -358,8 +359,15 @@ export function PlayerProvider({ children }) {
     ms.metadata = new window.MediaMetadata({
       title: current.title || 'Unknown',
       artist: current.artist || '',
+      // The lock screen crops to a square too, so skip the letterboxed hqdefault.
       artwork: current.thumbnailUrl
-        ? [{ src: current.thumbnailUrl, sizes: 'any', type: 'image/jpeg' }]
+        ? [{
+            src: ytThumbId(current.thumbnailUrl)
+              ? `https://i.ytimg.com/vi/${ytThumbId(current.thumbnailUrl)}/mqdefault.jpg`
+              : current.thumbnailUrl,
+            sizes: 'any',
+            type: 'image/jpeg',
+          }]
         : [],
     })
 

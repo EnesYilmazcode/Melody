@@ -49,3 +49,19 @@ export async function fetchYouTubePreview(id) {
     return null
   }
 }
+
+// YouTube's hqdefault thumbnail is 4:3 with black bars baked in above and
+// below the 16:9 frame, which shows as letterboxing in a square tile.
+// mqdefault and maxresdefault are true 16:9, so a centered square crop is
+// clean. Returns null for artwork that isn't a YouTube thumbnail.
+export function ytThumbId(url) {
+  const m = /^https:\/\/i\d?\.ytimg\.com\/vi(?:_webp)?\/([\w-]{11})\//.exec(url || '')
+  return m ? m[1] : null
+}
+
+/** Best-first artwork candidates for a display size in CSS px. */
+export function ytArtworkChain(id, size) {
+  const base = `https://i.ytimg.com/vi/${id}`
+  const sharp = size > 120 ? [`${base}/maxresdefault.jpg`] : []
+  return [...sharp, `${base}/mqdefault.jpg`, `${base}/hqdefault.jpg`]
+}

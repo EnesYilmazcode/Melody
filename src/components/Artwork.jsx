@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { ytThumbId, ytArtworkChain } from '../lib/youtube'
 
 // Square artwork. Uses the YouTube thumbnail when present; otherwise renders a
 // deterministic gradient tile (same track → same colors) so the library still
@@ -17,21 +18,30 @@ export function warmGlow(id) {
 
 export default function Artwork({ track, size = 48, radius = 8 }) {
   const style = { width: size, height: size, borderRadius: radius }
-  // A present-but-broken thumbnail URL (expired/offline/deleted video) should
-  // fall back to the gradient tile, not the browser's broken-image glyph.
-  // Reset the flag when the URL changes since this instance is reused in lists.
-  const [failed, setFailed] = useState(false)
-  useEffect(() => setFailed(false), [track?.thumbnailUrl])
+  const url = track?.thumbnailUrl
+  const ytId = ytThumbId(url)
+  const chain = ytId ? ytArtworkChain(ytId, size) : url ? [url] : []
+  // Walk down the chain on failure; past the end means the gradient tile. A
+  // present-but-broken URL (expired/offline/deleted video) should fall back,
+  // not show the browser's broken-image glyph. Reset when the track changes,
+  // since this instance is reused in lists.
+  const [step, setStep] = useState(0)
+  useEffect(() => setStep(0), [url, size])
 
-  if (track?.thumbnailUrl && !failed) {
+  const src = chain[step]
+  if (src) {
     return (
-      <img
-        className="artwork"
-        src={track.thumbnailUrl}
-        alt=""
-        style={style}
-        onError={() => setFailed(true)}
-      />
+      <span className="artwork artwork--img" style={style}>
+        <img
+          src={src}
+          alt=""
+          // hqdefault still carries its letterbox; zoom past the bars.
+          className={src.endsWith('/hqdefault.jpg') ? 'artwork__zoom' : undefined}
+          onError={() => setStep((n) => n + 1)}
+          // A missing maxres answers with a 120px grey placeholder, not an error.
+          onLoad={(e) => { if (src.includes('maxresdefault') && e.currentTarget.naturalWidth <= 120) setStep((n) => n + 1) }}
+        />
+      </span>
     )
   }
   // Keep the hue in a warm band (deep amber → sienna → olive) and low-ish
