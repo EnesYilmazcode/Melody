@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { usePlaylists, useTracks } from '../state/useLibrary'
-import { createPlaylist, renamePlaylist, deletePlaylist, removeFromPlaylist, exportBackup, importBackup } from '../lib/db'
+import { createPlaylist, renamePlaylist, deletePlaylist, exportBackup, importBackup } from '../lib/db'
 import { usePlayer } from '../state/PlayerProvider'
 import { useUI } from '../state/UIProvider'
 import { useLongPress } from '../lib/useLongPress'
@@ -28,11 +28,23 @@ export default function PlaylistsView() {
   const onExport = async () => {
     try {
       const data = await exportBackup()
+      const name = `melody-backup-${new Date().toISOString().slice(0, 10)}.json`
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+      // On iPhone the share sheet is the reliable way out ("Save to Files");
+      // a home-screen app can't follow a download link.
+      const file = new File([blob], name, { type: 'application/json' })
+      if (navigator.canShare?.({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file] })
+        } catch (err) {
+          if (err?.name !== 'AbortError') throw err
+        }
+        return
+      }
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `melody-backup-${new Date().toISOString().slice(0, 10)}.json`
+      a.download = name
       a.click()
       // Revoke once the download has had a moment to start — leaked object
       // URLs pin their Blobs in memory for the app's whole lifetime.
@@ -50,8 +62,8 @@ export default function PlaylistsView() {
       // Parse here, outside importBackup's Dexie transaction — awaiting
       // file.text() inside the transaction zone would kill it.
       const parsed = JSON.parse(await file.text())
-      const { tracks, playlists: pls } = await importBackup(parsed)
-      showToast(`${tracks} songs · ${pls} playlists restored`)
+      const { tracks, playlists: pls, podcasts } = await importBackup(parsed)
+      showToast(`${tracks} songs · ${pls} playlists${podcasts ? ` · ${podcasts} shows` : ''} restored`)
     } catch {
       showToast("Couldn't read that backup file.")
     }
@@ -225,13 +237,9 @@ function PlaylistDetail({ playlist, onBack, onActions }) {
           )}
           <div className="list">
             {tracks.map((t) => (
-              <div key={t.id} className="plrow">
-                <TrackRow track={t} list={tracks} playOpts={inOrder} />
-                <button className="iconbtn" onClick={() => removeFromPlaylist(playlist.id, t.id)} aria-label="Remove from playlist">−</button>
-              </div>
+              <TrackRow key={t.id} track={t} list={tracks} playOpts={inOrder} playlist={playlist} />
             ))}
           </div>
-          <p className="dim hint">Tip: set the loop button to ⟳ all to loop this playlist.</p>
         </>
       ) : (
         <p className="dim">Empty playlist. Add tracks from Library or Search using the ⋯ menu.</p>

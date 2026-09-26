@@ -202,10 +202,14 @@ export async function deleteTrack(trackId) {
 
 export async function exportBackup() {
   return {
-    schema: 3,
+    schema: 4,
     exportedAt: new Date().toISOString(),
     tracks: await db.tracks.toArray(),
     playlists: await db.playlists.toArray(),
+    // v4: followed shows and episode progress. Downloads aren't in the file,
+    // so every episode comes back as not downloaded.
+    podcasts: await db.podcasts.toArray(),
+    episodes: (await db.episodes.toArray()).map((e) => ({ ...e, downloaded: 0 })),
   }
 }
 
@@ -225,7 +229,7 @@ export async function importBackup(data) {
   }
   // Refuse backups from a future schema — importing one silently could apply
   // this version's merge semantics to fields it doesn't understand.
-  if (typeof data.schema === 'number' && data.schema > 3) {
+  if (typeof data.schema === 'number' && data.schema > 4) {
     throw new Error('invalid-backup')
   }
   // Beyond the id check, coerce the fields the UI and dedup depend on — a
@@ -243,8 +247,13 @@ export async function importBackup(data) {
       duration: typeof t.duration === 'number' ? t.duration : 0,
     }))
   const playlistRows = data.playlists.filter((p) => p && typeof p.name === 'string')
+  // Schema 3 backups have no podcasts; treat them as empty.
+  const podcastRows = (Array.isArray(data.podcasts) ? data.podcasts : []).filter((p) => p && typeof p.id === 'string')
+  const episodeRows = (Array.isArray(data.episodes) ? data.episodes : []).filter(
+    (e) => e && typeof e.id === 'string' && typeof e.podcastId === 'string' && typeof e.audioUrl === 'string',
+  )
 
-  await db.transaction('rw', db.tracks, db.playlists, async () => {
+  await db.transaction('rw', db.tracks, db.playlists, db.podcasts, db.episodes, async () => {
     for (const row of trackRows) {
       const existing = await db.tracks.get(row.id)
       if (existing) {
@@ -284,6 +293,7 @@ export async function importBackup(data) {
           for (const tid of pl.trackIds || []) {
             if (!p.trackIds.includes(tid)) p.trackIds.push(tid)
           }
+          if (!p.resume && pl.resume) p.resume = pl.resume
         })
       } else {
         // NEVER restore the old id: playlist ids are ++id auto-increment
@@ -293,12 +303,31 @@ export async function importBackup(data) {
           name: pl.name,
           trackIds: [...(pl.trackIds || [])],
           createdAt: pl.createdAt ?? Date.now(),
+          ...(pl.resume ? { resume: pl.resume } : {}),
+        })
+      }
+    }
+
+    // Shows merge by feed URL. For episodes the further-along progress wins,
+    // and a live download is never marked as missing.
+    for (const show of podcastRows) {
+      if (!(await db.podcasts.get(show.id))) await db.podcasts.add(show)
+    }
+    for (const ep of episodeRows) {
+      const existing = await db.episodes.get(ep.id)
+      if (!existing) {
+        await db.episodes.add({ ...ep, downloaded: 0 })
+      } else {
+        await db.episodes.update(ep.id, {
+          played: existing.played || ep.played ? 1 : 0,
+          position: Math.max(existing.position || 0, ep.position || 0),
+          lastPlayedAt: Math.max(existing.lastPlayedAt || 0, ep.lastPlayedAt || 0) || null,
         })
       }
     }
   })
 
-  return { tracks: trackRows.length, playlists: playlistRows.length }
+  return { tracks: trackRows.length, playlists: playlistRows.length, podcasts: podcastRows.length }
 }
 
 // ── Playlist mutations ──────────────────────────────────────────────────────
