@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react'
-import { bumpPlayCount, getAudioBlob } from '../lib/db'
+import { bumpPlayCount, getAudioBlob, getPosition, savePosition, setPlayed } from '../lib/db'
+import { isLongForm } from '../lib/podcasts'
 
 const PlayerContext = createContext(null)
 export const usePlayer = () => useContext(PlayerContext)
@@ -7,6 +8,20 @@ export const usePlayer = () => useContext(PlayerContext)
 // Loop modes cycle in this order when you tap the loop button:
 //   off → all (loop the whole queue/playlist) → one (loop this song) → off
 export const LOOP_MODES = ['off', 'all', 'one']
+
+// Podcast speeds, cycled by the speed pill. Music always plays at 1x.
+export const SPEEDS = [1, 1.25, 1.5, 1.75, 2, 0.75]
+const SKIP_BACK = 15
+const SKIP_FORWARD = 30
+
+function loadSpeed() {
+  try {
+    const v = Number(localStorage.getItem('melody.speed'))
+    return SPEEDS.includes(v) ? v : 1
+  } catch {
+    return 1
+  }
+}
 
 // Every MediaSession action we ever register — used to tear them all down on
 // cleanup / when nothing is playing, so the lock screen never keeps stale
@@ -19,7 +34,8 @@ const MEDIA_ACTIONS = [
 export function PlayerProvider({ children }) {
   const audioRef = useRef(null)
   const countedRef = useRef(false) // so each play only bumps playCount once
-  const loadedIdRef = useRef(null) // the track id the <audio> element is loaded with
+  const loadedRef = useRef(null) // the item the <audio> element is loaded with
+  const lastSavedRef = useRef(0) // position last written to the db (long-form only)
   const objectUrlRef = useRef(null) // current blob: URL, revoked when track changes
   const [missing, setMissing] = useState(false) // audio bytes not found
 
@@ -34,8 +50,22 @@ export function PlayerProvider({ children }) {
   // loop-all wrap, without the setIndex(-1) bounce that made `current` briefly
   // null (which flashed the Now Playing screen closed).
   const [playToken, setPlayToken] = useState(0)
+  const [speed, setSpeed] = useState(loadSpeed)
+  const speedRef = useRef(speed)
+  speedRef.current = speed
 
   const current = index >= 0 ? queue[index] : null
+  const longForm = isLongForm(current)
+
+  // Long-form plays at the chosen speed; music always at 1x. Safari resets
+  // playbackRate on every load, so this also runs from loadedmetadata.
+  const applyRate = useCallback(() => {
+    const audio = audioRef.current
+    if (!audio) return
+    const rate = isLongForm(loadedRef.current) ? speedRef.current : 1
+    audio.defaultPlaybackRate = rate
+    audio.playbackRate = rate
+  }, [])
 
   // ── Core: load + play a queue starting at a given index ──
   const playQueue = useCallback((tracks, startIndex = 0) => {
@@ -83,7 +113,7 @@ export function PlayerProvider({ children }) {
     // Blank the loaded-id until the element actually switches to this track, so
     // a timeupdate from the still-playing PREVIOUS track (during the async blob
     // read) can't be credited to it a second time.
-    loadedIdRef.current = null
+    loadedRef.current = null
     setMissing(false)
     // Reset the scrubber immediately so it doesn't show the previous track's
     // position/length until the new metadata arrives.
@@ -98,34 +128,39 @@ export function PlayerProvider({ children }) {
     }
 
     ;(async () => {
-      let url = current.src
-      if (!url) {
-        const blob = await getAudioBlob(current.id)
-        if (!blob) {
-          // Bytes are gone (cleared storage / failed import). Stop the element
-          // so it doesn't keep playing the PREVIOUS track under a now-missing
-          // `current`, and reset state so the UI can show an honest message.
-          if (!cancelled) {
-            audio.pause()
-            audio.removeAttribute('src')
-            audio.load()
-            revokePrev() // release the previous track's blob URL too
-            setIsPlaying(false)
-            setMissing(true)
-          }
-          return
+      // Imported tracks only exist as a Blob. Episodes stream from their URL
+      // unless they've been downloaded, in which case the Blob wins (offline).
+      let blob = null
+      if (!current.src || current.kind === 'episode') blob = await getAudioBlob(current.id)
+      if (!blob && !current.src) {
+        // Bytes are gone (cleared storage / failed import). Stop the element
+        // so it doesn't keep playing the PREVIOUS track under a now-missing
+        // `current`, and reset state so the UI can show an honest message.
+        if (!cancelled) {
+          audio.pause()
+          audio.removeAttribute('src')
+          audio.load()
+          revokePrev() // release the previous track's blob URL too
+          setIsPlaying(false)
+          setMissing(true)
         }
-        if (cancelled) return
-        url = URL.createObjectURL(blob)
-      }
-      if (cancelled) {
-        if (!current.src) URL.revokeObjectURL(url)
         return
       }
+      const resumeAt = isLongForm(current) ? await getPosition(current).catch(() => 0) : 0
+      if (cancelled) return
+      const url = blob ? URL.createObjectURL(blob) : current.src
       revokePrev()
-      if (!current.src) objectUrlRef.current = url
+      if (blob) objectUrlRef.current = url
       audio.src = url
-      loadedIdRef.current = current.id // element is now this track → safe to count
+      loadedRef.current = current // element is now this track → safe to count
+      lastSavedRef.current = resumeAt
+      applyRate()
+      if (resumeAt > 5) {
+        // Pick up where you left off, unless that was the last few seconds.
+        audio.addEventListener('loadedmetadata', () => {
+          if (!audio.duration || resumeAt < audio.duration - 15) audio.currentTime = resumeAt
+        }, { once: true })
+      }
       audio.loop = loopMode === 'one'
       audio.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false))
     })()
@@ -133,6 +168,11 @@ export function PlayerProvider({ children }) {
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [index, current?.id, playToken])
+
+  useEffect(() => {
+    applyRate()
+    try { localStorage.setItem('melody.speed', String(speed)) } catch { /* private mode */ }
+  }, [speed, applyRate])
 
   // Keep the native loop flag in sync when the mode changes mid-track.
   useEffect(() => {
@@ -204,6 +244,28 @@ export function PlayerProvider({ children }) {
     if (audioRef.current) audioRef.current.currentTime = t
   }, [])
 
+  const skip = useCallback((sec) => {
+    const a = audioRef.current
+    if (!a) return
+    const t = (a.currentTime || 0) + sec
+    a.currentTime = Math.max(0, a.duration ? Math.min(a.duration, t) : t)
+  }, [])
+
+  const cycleSpeed = useCallback(() => {
+    setSpeed((v) => SPEEDS[(SPEEDS.indexOf(v) + 1) % SPEEDS.length])
+  }, [])
+
+  // Write the listening position for long-form items. Skipped in the last
+  // stretch so finishing an episode doesn't leave it "resume at 59:58", and in
+  // the first seconds, which is where a fresh load sits before the resume seek.
+  const persistPosition = (a) => {
+    const item = loadedRef.current
+    if (!isLongForm(item) || !a.duration) return
+    if (a.currentTime < 5 || a.currentTime > a.duration - 15) return
+    lastSavedRef.current = a.currentTime
+    savePosition(item, a.currentTime).catch(() => {})
+  }
+
   const cycleLoop = useCallback(() => {
     setLoopMode((m) => LOOP_MODES[(LOOP_MODES.indexOf(m) + 1) % LOOP_MODES.length])
   }, [])
@@ -216,10 +278,11 @@ export function PlayerProvider({ children }) {
     // through a short track. Doing it here (not on loadedmetadata) means
     // skipping past tracks no longer inflates playCount, and we credit the
     // track the element is actually loaded with, not a since-changed `current`.
-    if (!countedRef.current && loadedIdRef.current && a.currentTime >= Math.min(5, (a.duration || 10) * 0.5)) {
+    if (!countedRef.current && loadedRef.current && a.currentTime >= Math.min(5, (a.duration || 10) * 0.5)) {
       countedRef.current = true
-      bumpPlayCount(loadedIdRef.current).catch(() => {})
+      bumpPlayCount(loadedRef.current.id).catch(() => {})
     }
+    if (Math.abs(a.currentTime - lastSavedRef.current) >= 5) persistPosition(a)
     // Feed the lock-screen scrubber on iOS.
     if ('mediaSession' in navigator && navigator.mediaSession.setPositionState && a.duration && Number.isFinite(a.duration)) {
       try {
@@ -235,8 +298,10 @@ export function PlayerProvider({ children }) {
   }
   const onLoadedMeta = (e) => {
     setDuration(e.target.duration || 0)
+    applyRate()
   }
   const onEnded = () => {
+    if (isLongForm(loadedRef.current)) setPlayed(loadedRef.current, true).catch(() => {})
     // loop === 'one' is handled by audio.loop (no 'ended' fires).
     if (index + 1 < queue.length) {
       setIndex((i) => i + 1)
@@ -283,25 +348,24 @@ export function PlayerProvider({ children }) {
     }
     set('play', play)
     set('pause', pause)
-    set('previoustrack', prev)
-    set('nexttrack', next)
+    // Long-form gets skip buttons on the lock screen instead of prev/next:
+    // iOS only shows them when the track actions are left unset.
+    if (!longForm) {
+      set('previoustrack', prev)
+      set('nexttrack', next)
+    }
     set('stop', () => {
       pause()
       if (audioRef.current) audioRef.current.currentTime = 0
     })
-    set('seekbackward', (d) => seek(Math.max(0, (audioRef.current?.currentTime || 0) - (d.seekOffset || 10))))
-    set('seekforward', (d) => {
-      const a = audioRef.current
-      if (!a) return
-      const target = (a.currentTime || 0) + (d.seekOffset || 10)
-      seek(a.duration ? Math.min(a.duration, target) : target)
-    })
+    set('seekbackward', (d) => skip(-(d.seekOffset || (longForm ? SKIP_BACK : 10))))
+    set('seekforward', (d) => skip(d.seekOffset || (longForm ? SKIP_FORWARD : 10)))
     set('seekto', (d) => { if (d.seekTime != null) seek(d.seekTime) })
 
     // Clear handlers when the track changes or the provider unmounts, so no
     // remote press ever fires a closure bound to the previous track.
     return clearAll
-  }, [current, play, pause, prev, next, seek])
+  }, [current, longForm, play, pause, prev, next, seek, skip])
 
   // Single source of truth for playbackState: 'none' when nothing is loaded,
   // else mirror isPlaying. iOS uses this to decide whether a remote press maps
@@ -314,8 +378,8 @@ export function PlayerProvider({ children }) {
   }, [isPlaying, current])
 
   const value = {
-    current, queue, index, isPlaying, loopMode, progress, duration, missing,
-    playTrack, playQueue, playNext, addToQueue, toggle, next, prev, seek, cycleLoop,
+    current, queue, index, isPlaying, loopMode, progress, duration, missing, longForm, speed,
+    playTrack, playQueue, playNext, addToQueue, toggle, next, prev, seek, cycleLoop, skip, cycleSpeed,
   }
 
   return (
@@ -329,7 +393,17 @@ export function PlayerProvider({ children }) {
         onLoadedMetadata={onLoadedMeta}
         onEnded={onEnded}
         onPlay={() => setIsPlaying(true)}
-        onPause={() => setIsPlaying(false)}
+        onPause={(e) => {
+          setIsPlaying(false)
+          persistPosition(e.target)
+        }}
+        onError={(e) => {
+          // A stream that can't load (offline, feed host down). Code 1 is an
+          // abort from switching tracks, which isn't a failure.
+          if (e.target.error?.code === 1 || !loadedRef.current) return
+          setIsPlaying(false)
+          setMissing(true)
+        }}
       />
     </PlayerContext.Provider>
   )

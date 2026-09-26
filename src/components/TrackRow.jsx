@@ -1,5 +1,6 @@
 import Artwork from './Artwork'
-import { formatTime } from '../lib/format'
+import { formatTime, timeLeft } from '../lib/format'
+import { isLongForm } from '../lib/podcasts'
 import { toggleStar } from '../lib/db'
 import { usePlayer } from '../state/PlayerProvider'
 import { useUI } from '../state/UIProvider'
@@ -22,7 +23,9 @@ export default function TrackRow({ track, list }) {
         {isCurrent && isPlaying && <EqBars />}
       </button>
 
-      <span className="row__dur">{formatTime(track.duration)}</span>
+      <span className="row__dur">
+        {isLongForm(track) && track.position > 0 ? timeLeft(track.duration, track.position) : formatTime(track.duration)}
+      </span>
 
       <button
         className={`iconbtn ${track.starred ? 'iconbtn--star-on' : ''}`}
