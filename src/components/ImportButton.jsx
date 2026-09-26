@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { addLocalTrack, requestPersistentStorage, storageEstimate } from '../lib/db'
+import { addLocalTrack, requestPersistentStorage, storageEstimate, seriesNumber, upsertSeriesPlaylist } from '../lib/db'
 import { readDuration, parseFilename } from '../lib/audio'
 import { ensureLyrics } from '../lib/lyrics'
 import { fetchYouTubePreview } from '../lib/youtube'
@@ -13,7 +13,10 @@ export default function ImportButton() {
   const [notice, setNotice] = useState(null) // user-facing result/errors
 
   const onPick = async (e) => {
-    const files = [...e.target.files]
+    // Name order with numbers compared as numbers, so a numbered series lands
+    // in the library (and its playlist) in episode order.
+    const files = [...e.target.files].sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }))
     e.target.value = '' // reset so the same file can be re-picked later
     if (!files.length) return
     setNotice(null)
@@ -34,6 +37,7 @@ export default function ImportButton() {
     let skipped = 0
     let failed = 0
     let outOfSpace = false
+    const series = new Map() // artist → ids of numbered tracks from this import
     for (const file of files) {
       try {
         const { title, youtubeId } = parseFilename(file.name)
@@ -52,6 +56,10 @@ export default function ImportButton() {
         }
 
         const { id, duplicate } = await addLocalTrack({ title, artist, duration, blob: file, thumbnailUrl, youtubeId })
+        if (artist !== 'Imported' && seriesNumber(title) != null) {
+          if (!series.has(artist)) series.set(artist, [])
+          series.get(artist).push(id)
+        }
         if (duplicate) {
           skipped++
           continue
@@ -71,6 +79,14 @@ export default function ImportButton() {
     }
     setRemaining(0)
 
+    // Three or more numbered files from one show make (or extend) a playlist.
+    const made = []
+    for (const [name, ids] of series) {
+      if (ids.length < 3) continue
+      await upsertSeriesPlaylist(name, ids).catch(() => {})
+      made.push(name)
+    }
+
     // Only surface something when it's worth telling the user about.
     if (outOfSpace) {
       setNotice("Ran out of storage — not all tracks were imported.")
@@ -78,6 +94,7 @@ export default function ImportButton() {
       const parts = []
       if (skipped) parts.push(`${skipped} already in your library`)
       if (failed) parts.push(`${failed} couldn't be imported`)
+      for (const name of made) parts.push(`Playlist “${name}” is ready, in order`)
       setNotice(parts.length ? parts.join(' · ') : null)
     }
   }
