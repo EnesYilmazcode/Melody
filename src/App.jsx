@@ -4,6 +4,7 @@ import { UIProvider } from './state/UIProvider'
 import SearchView from './components/SearchView'
 import LibraryView from './components/LibraryView'
 import PlaylistsView from './components/PlaylistsView'
+import PodcastsView from './components/PodcastsView'
 import Player from './components/Player'
 import AddToPlaylistSheet from './components/AddToPlaylistSheet'
 
@@ -11,6 +12,7 @@ const TABS = [
   { id: 'search', label: 'Search', icon: SearchIcon },
   { id: 'library', label: 'Library', icon: LibraryIcon },
   { id: 'playlists', label: 'Playlists', icon: PlaylistIcon },
+  { id: 'podcasts', label: 'Podcasts', icon: PodcastIcon },
 ]
 
 export default function App() {
@@ -24,6 +26,7 @@ export default function App() {
             {tab === 'search' && <SearchView />}
             {tab === 'library' && <LibraryView />}
             {tab === 'playlists' && <PlaylistsView />}
+            {tab === 'podcasts' && <PodcastsView />}
           </main>
 
           {/* Floating dock: mini-player card stacked above the tab bar */}
@@ -58,4 +61,7 @@ function LibraryIcon() {
 }
 function PlaylistIcon() {
   return <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h13M3 12h9M3 18h9" /><path d="M16 13v6" /><circle cx="19" cy="19" r="2.5" /></svg>
+}
+function PodcastIcon() {
+  return <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></svg>
 }

@@ -50,3 +50,23 @@ export function useSearch(tracks, query) {
     return fuse.search(q).map((r) => r.item)
   }, [fuse, query, tracks])
 }
+
+export function usePodcasts() {
+  return useLiveQuery(() => db.podcasts.orderBy('title').toArray())
+}
+
+/** A show's episodes, newest first. */
+export function useEpisodes(podcastId) {
+  return useLiveQuery(
+    () => (podcastId == null ? [] : db.episodes.where('podcastId').equals(podcastId).reverse().sortBy('pubDate')),
+    [podcastId],
+  )
+}
+
+/** Episodes started but not finished, most recently played first. */
+export function useInProgress() {
+  return useLiveQuery(async () => {
+    const eps = await db.episodes.filter((e) => e.position > 0 && !e.played).toArray()
+    return eps.sort((a, b) => (b.lastPlayedAt || 0) - (a.lastPlayedAt || 0)).slice(0, 5)
+  })
+}
