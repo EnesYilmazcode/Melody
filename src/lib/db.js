@@ -36,6 +36,14 @@ db.version(3).stores({
   lyrics: 'id', // { id: trackId, synced: [{time,text}]|null, plain: string|null, fetchedAt }
 })
 
+// v4: podcast subscriptions and their episodes. Episodes live apart from
+// `tracks` so a show's back catalog doesn't flood the music library. A
+// downloaded episode keeps its bytes in `audioBlobs` under the episode id.
+db.version(4).stores({
+  podcasts: 'id, title, subscribedAt', // id = feed URL
+  episodes: 'id, podcastId, pubDate',
+})
+
 // Fields the download engine "owns" — safe to overwrite on catalog re-import.
 const CATALOG_FIELDS = ['title', 'artist', 'duration', 'thumbnailUrl', 'filePath', 'src']
 
@@ -198,5 +206,69 @@ export async function addToPlaylist(id, trackId) {
 export async function removeFromPlaylist(id, trackId) {
   await db.playlists.where('id').equals(id).modify((pl) => {
     pl.trackIds = pl.trackIds.filter((t) => t !== trackId)
+  })
+}
+
+// ── Listening position (podcast mode) ───────────────────────────────────────
+// Long-form items remember where you stopped. A track or an episode can be
+// playing, so pick the table by the item's kind.
+const tableFor = (item) => (item.kind === 'episode' ? db.episodes : db.tracks)
+
+export async function getPosition(item) {
+  const row = await tableFor(item).get(item.id)
+  return row?.position || 0
+}
+
+export async function savePosition(item, position) {
+  await tableFor(item).update(item.id, { position, lastPlayedAt: Date.now() })
+}
+
+export async function setPlayed(item, played) {
+  await tableFor(item).update(item.id, { played: played ? 1 : 0, position: 0 })
+}
+
+// ── Podcasts ────────────────────────────────────────────────────────────────
+// Feed fields to refresh on every fetch; everything else on an episode row
+// (position, played, downloaded) is user state and survives a refresh.
+const EPISODE_FEED_FIELDS = ['title', 'audioUrl', 'duration', 'pubDate', 'image', 'summary']
+
+export async function savePodcast(show, episodes) {
+  await db.transaction('rw', db.podcasts, db.episodes, async () => {
+    const existing = await db.podcasts.get(show.id)
+    await db.podcasts.put({ subscribedAt: Date.now(), ...existing, ...show, refreshedAt: Date.now() })
+    for (const ep of episodes) {
+      const old = await db.episodes.get(ep.id)
+      if (old) {
+        const patch = {}
+        for (const f of EPISODE_FEED_FIELDS) if (ep[f] !== undefined) patch[f] = ep[f]
+        await db.episodes.update(ep.id, patch)
+      } else {
+        await db.episodes.add({ position: 0, played: 0, downloaded: 0, lastPlayedAt: null, ...ep })
+      }
+    }
+  })
+}
+
+/** Drop a show, its episodes, and any downloaded audio. */
+export async function unsubscribePodcast(podcastId) {
+  await db.transaction('rw', db.podcasts, db.episodes, db.audioBlobs, async () => {
+    const ids = await db.episodes.where('podcastId').equals(podcastId).primaryKeys()
+    await db.audioBlobs.bulkDelete(ids)
+    await db.episodes.bulkDelete(ids)
+    await db.podcasts.delete(podcastId)
+  })
+}
+
+export async function saveEpisodeAudio(episodeId, blob) {
+  await db.transaction('rw', db.episodes, db.audioBlobs, async () => {
+    await db.audioBlobs.put({ id: episodeId, blob })
+    await db.episodes.update(episodeId, { downloaded: 1 })
+  })
+}
+
+export async function removeEpisodeAudio(episodeId) {
+  await db.transaction('rw', db.episodes, db.audioBlobs, async () => {
+    await db.audioBlobs.delete(episodeId)
+    await db.episodes.update(episodeId, { downloaded: 0 })
   })
 }
