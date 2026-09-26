@@ -3,7 +3,7 @@ import { usePlaylists, useTracks } from '../state/useLibrary'
 import { createPlaylist, renamePlaylist, deletePlaylist, removeFromPlaylist } from '../lib/db'
 import { usePlayer } from '../state/PlayerProvider'
 import { useLongPress } from '../lib/useLongPress'
-import { summarize } from '../lib/format'
+import { summarize, formatTime } from '../lib/format'
 import { shuffle } from '../lib/shuffle'
 import TrackRow from './TrackRow'
 import PromptModal from './PromptModal'
@@ -118,6 +118,10 @@ function PlaylistDetail({ playlist, onBack, onActions }) {
   const byId = new Map(allTracks.map((t) => [t.id, t]))
   const tracks = playlist.trackIds.map((id) => byId.get(id)).filter(Boolean)
   const shuffled = () => shuffle(tracks)
+  // Shuffle doesn't bookmark: the next Resume should follow playlist order.
+  const inOrder = { playlistId: playlist.id }
+  const resumeIdx = playlist.resume ? tracks.findIndex((t) => t.id === playlist.resume.trackId) : -1
+  const resumeTrack = resumeIdx >= 0 ? tracks[resumeIdx] : null
 
   return (
     <>
@@ -131,13 +135,26 @@ function PlaylistDetail({ playlist, onBack, onActions }) {
         <>
           <p className="phead__meta dim">{summarize(tracks)}</p>
           <div className="row-actions">
-            <button className="btn btn--accent playall" onClick={() => playQueue(tracks, 0)}><PlayGlyph /> Play</button>
+            <button className="btn btn--accent playall" onClick={() => playQueue(tracks, 0, inOrder)}><PlayGlyph /> Play</button>
             <button className="btn btn--ghost playall" onClick={() => playQueue(shuffled(), 0)}><ShuffleGlyph /> Shuffle</button>
           </div>
+          {resumeTrack && (
+            <button
+              className="resume"
+              onClick={() => playQueue(tracks, resumeIdx, { ...inOrder, startAt: playlist.resume.position })}
+            >
+              <PlayGlyph />
+              <span className="resume__meta">
+                <span className="resume__label">Resume</span>
+                <span className="resume__title">{resumeTrack.title}</span>
+              </span>
+              <span className="resume__time">{formatTime(playlist.resume.position)}</span>
+            </button>
+          )}
           <div className="list">
             {tracks.map((t) => (
               <div key={t.id} className="plrow">
-                <TrackRow track={t} list={tracks} />
+                <TrackRow track={t} list={tracks} playOpts={inOrder} />
                 <button className="iconbtn" onClick={() => removeFromPlaylist(playlist.id, t.id)} aria-label="Remove from playlist">−</button>
               </div>
             ))}

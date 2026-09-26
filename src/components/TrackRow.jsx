@@ -7,14 +7,14 @@ import { useUI } from '../state/UIProvider'
 
 // A single tappable track. Tap the row → play (within `list` as the queue).
 // Star button toggles favorite; the ⋯ button opens the add-to-playlist sheet.
-export default function TrackRow({ track, list }) {
+export default function TrackRow({ track, list, playOpts }) {
   const { current, isPlaying, playTrack } = usePlayer()
   const { openAddToPlaylist } = useUI()
   const isCurrent = current?.id === track.id
 
   return (
     <div className={`row ${isCurrent ? 'row--active' : ''}`}>
-      <button className="row__main" onClick={() => playTrack(track, list)}>
+      <button className="row__main" onClick={() => playTrack(track, list, playOpts)}>
         <Artwork track={track} />
         <span className="row__meta">
           <span className="row__title">{track.title}</span>
