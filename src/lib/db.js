@@ -272,3 +272,40 @@ export async function removeEpisodeAudio(episodeId) {
     await db.episodes.update(episodeId, { downloaded: 0 })
   })
 }
+
+// ── Series (numbered episodes imported as files) ────────────────────────────
+// "Show - 012 Episode title" style imports become one playlist, kept in
+// episode-number order, so a whole series plays through without hand-sorting.
+
+/** Leading episode number of a title ("012 Something" → 12), or null. */
+export function seriesNumber(title) {
+  const m = /^(\d{1,4})(?:[\s.)_-]|$)/.exec(title || '')
+  return m ? Number(m[1]) : null
+}
+
+/**
+ * Create or extend the playlist named `name` with `trackIds`, ordered by each
+ * track's leading number. Returns the playlist id.
+ */
+export async function upsertSeriesPlaylist(name, trackIds) {
+  let id
+  await db.transaction('rw', db.playlists, db.tracks, async () => {
+    const existing = await db.playlists.where('name').equals(name).first()
+    const ids = [...new Set([...(existing?.trackIds || []), ...trackIds])]
+    const rows = await db.tracks.bulkGet(ids)
+    const num = new Map(rows.filter(Boolean).map((t) => [t.id, seriesNumber(t.title) ?? Infinity]))
+    const ordered = ids.filter((i) => num.has(i)).sort((a, b) => num.get(a) - num.get(b))
+    if (existing) {
+      await db.playlists.update(existing.id, { trackIds: ordered })
+      id = existing.id
+    } else {
+      id = await db.playlists.add({ name, trackIds: ordered, createdAt: Date.now() })
+    }
+  })
+  return id
+}
+
+/** Remember where a playlist was left: which track, and how far in. */
+export async function savePlaylistResume(playlistId, trackId, position) {
+  await db.playlists.update(playlistId, { resume: { trackId, position, at: Date.now() } })
+}

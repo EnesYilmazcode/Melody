@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react'
-import { bumpPlayCount, getAudioBlob, getPosition, savePosition, setPlayed } from '../lib/db'
+import { bumpPlayCount, getAudioBlob, getPosition, savePosition, setPlayed, savePlaylistResume } from '../lib/db'
 import { isLongForm } from '../lib/podcasts'
 
 const PlayerContext = createContext(null)
@@ -36,6 +36,9 @@ export function PlayerProvider({ children }) {
   const countedRef = useRef(false) // so each play only bumps playCount once
   const loadedRef = useRef(null) // the item the <audio> element is loaded with
   const lastSavedRef = useRef(0) // position last written to the db (long-form only)
+  const sourceRef = useRef(null) // playlist id the queue came from, for resume
+  const startAtRef = useRef(null) // one-shot start position for the next load
+  const lastResumeRef = useRef(0)
   const objectUrlRef = useRef(null) // current blob: URL, revoked when track changes
   const [missing, setMissing] = useState(false) // audio bytes not found
 
@@ -68,8 +71,12 @@ export function PlayerProvider({ children }) {
   }, [])
 
   // ── Core: load + play a queue starting at a given index ──
-  const playQueue = useCallback((tracks, startIndex = 0) => {
+  // opts.playlistId: remember progress on that playlist as it plays.
+  // opts.startAt: begin the first track at this position (seconds).
+  const playQueue = useCallback((tracks, startIndex = 0, opts = {}) => {
     if (!tracks.length) return
+    sourceRef.current = opts.playlistId ?? null
+    startAtRef.current = opts.startAt ?? null
     setQueue(tracks)
     setIndex(startIndex)
     setPlayToken((t) => t + 1) // reload even if startIndex === the current index
@@ -94,10 +101,10 @@ export function PlayerProvider({ children }) {
 
   // Convenience: play a single track, optionally within a list as its queue.
   const playTrack = useCallback(
-    (track, list) => {
+    (track, list, opts) => {
       const q = list && list.length ? list : [track]
       const i = q.findIndex((t) => t.id === track.id)
-      playQueue(q, i < 0 ? 0 : i)
+      playQueue(q, i < 0 ? 0 : i, opts)
     },
     [playQueue],
   )
@@ -146,7 +153,9 @@ export function PlayerProvider({ children }) {
         }
         return
       }
-      const resumeAt = isLongForm(current) ? await getPosition(current).catch(() => 0) : 0
+      const startAt = startAtRef.current
+      startAtRef.current = null
+      const resumeAt = startAt != null ? startAt : isLongForm(current) ? await getPosition(current).catch(() => 0) : 0
       if (cancelled) return
       const url = blob ? URL.createObjectURL(blob) : current.src
       revokePrev()
@@ -154,6 +163,8 @@ export function PlayerProvider({ children }) {
       audio.src = url
       loadedRef.current = current // element is now this track → safe to count
       lastSavedRef.current = resumeAt
+      lastResumeRef.current = resumeAt
+      if (sourceRef.current != null) savePlaylistResume(sourceRef.current, current.id, resumeAt).catch(() => {})
       applyRate()
       if (resumeAt > 5) {
         // Pick up where you left off, unless that was the last few seconds.
@@ -266,6 +277,14 @@ export function PlayerProvider({ children }) {
     savePosition(item, a.currentTime).catch(() => {})
   }
 
+  // Playlist bookmark: the track and spot, for the Resume button.
+  const persistResume = (a) => {
+    const item = loadedRef.current
+    if (sourceRef.current == null || !item) return
+    lastResumeRef.current = a.currentTime
+    savePlaylistResume(sourceRef.current, item.id, a.currentTime).catch(() => {})
+  }
+
   const cycleLoop = useCallback(() => {
     setLoopMode((m) => LOOP_MODES[(LOOP_MODES.indexOf(m) + 1) % LOOP_MODES.length])
   }, [])
@@ -283,6 +302,7 @@ export function PlayerProvider({ children }) {
       bumpPlayCount(loadedRef.current.id).catch(() => {})
     }
     if (Math.abs(a.currentTime - lastSavedRef.current) >= 5) persistPosition(a)
+    if (Math.abs(a.currentTime - lastResumeRef.current) >= 5) persistResume(a)
     // Feed the lock-screen scrubber on iOS.
     if ('mediaSession' in navigator && navigator.mediaSession.setPositionState && a.duration && Number.isFinite(a.duration)) {
       try {
@@ -396,6 +416,7 @@ export function PlayerProvider({ children }) {
         onPause={(e) => {
           setIsPlaying(false)
           persistPosition(e.target)
+          persistResume(e.target)
         }}
         onError={(e) => {
           // A stream that can't load (offline, feed host down). Code 1 is an

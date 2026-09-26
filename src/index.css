@@ -513,3 +513,15 @@ body {
 .eprow__bar i { display: block; height: 100%; background: var(--accent); }
 .eprow__dl { font-size: 12px; font-variant-numeric: tabular-nums; color: var(--accent); width: 44px; height: 44px; display: grid; place-items: center; flex-shrink: 0; }
 .episheet__summary { font-size: 13px; line-height: 1.5; margin: 0 0 8px; max-height: 30vh; overflow-y: auto; }
+
+/* ── playlist resume ─────────────────────────────────────────── */
+.resume {
+  display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+  background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--line));
+  border-radius: 14px; padding: 12px 14px; margin: -6px 0 16px;
+  color: var(--accent); font-family: var(--font); cursor: pointer;
+}
+.resume__meta { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.resume__label { font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
+.resume__title { color: var(--text); font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.resume__time { font-size: 13px; font-variant-numeric: tabular-nums; }
