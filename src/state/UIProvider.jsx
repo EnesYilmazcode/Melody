@@ -11,7 +11,12 @@ export function UIProvider({ children }) {
   const [addTarget, setAddTarget] = useState(null) // track being added, or null
   const [toast, setToast] = useState(null) // { id, message } or null
 
-  const openAddToPlaylist = useCallback((track) => setAddTarget(track), [])
+  // fromPlaylist: the playlist the row belongs to, so the sheet can offer removal.
+  const [fromPlaylist, setFromPlaylist] = useState(null)
+  const openAddToPlaylist = useCallback((track, playlist = null) => {
+    setAddTarget(track)
+    setFromPlaylist(playlist)
+  }, [])
   const closeAddToPlaylist = useCallback(() => setAddTarget(null), [])
 
   // id changes per call so App can key the Toast — remounting restarts the
@@ -20,7 +25,7 @@ export function UIProvider({ children }) {
   const clearToast = useCallback(() => setToast(null), [])
 
   return (
-    <UIContext.Provider value={{ addTarget, openAddToPlaylist, closeAddToPlaylist, toast, showToast, clearToast }}>
+    <UIContext.Provider value={{ addTarget, fromPlaylist, openAddToPlaylist, closeAddToPlaylist, toast, showToast, clearToast }}>
       {children}
     </UIContext.Provider>
   )

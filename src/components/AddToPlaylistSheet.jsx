@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useUI } from '../state/UIProvider'
 import { usePlaylists } from '../state/useLibrary'
 import { usePlayer } from '../state/PlayerProvider'
-import { addToPlaylist, createPlaylist, toggleStar, deleteTrack } from '../lib/db'
+import { addToPlaylist, createPlaylist, toggleStar, deleteTrack, removeFromPlaylist } from '../lib/db'
 import PromptModal from './PromptModal'
 import ConfirmModal from './ConfirmModal'
 import { useDialog } from '../lib/useDialog'
@@ -10,7 +10,7 @@ import { useDialog } from '../lib/useDialog'
 // Track actions sheet (opened from a TrackRow's ⋯). Quick playback actions on
 // top (Play next / Add to queue / Favorite), then the "add to playlist" picker.
 export default function AddToPlaylistSheet() {
-  const { addTarget, closeAddToPlaylist } = useUI()
+  const { addTarget, fromPlaylist, closeAddToPlaylist } = useUI()
   const playlists = usePlaylists()
   const { playNext, addToQueue } = usePlayer()
   const [creating, setCreating] = useState(false)
@@ -51,6 +51,15 @@ export default function AddToPlaylistSheet() {
             <span>{addTarget.starred ? 'Remove from favorites' : 'Add to favorites'}</span>
             <Glyph filled={!!addTarget.starred} d="M9 1.5l2.2 4.5 5 .7-3.6 3.5.85 5L9 12.9 4.7 15.2l.85-5L2 6.7l5-.7z" />
           </button>
+
+          {fromPlaylist && (
+            <button
+              className="sheet__item"
+              onClick={() => { removeFromPlaylist(fromPlaylist.id, addTarget.id).catch(() => {}); close() }}
+            >
+              <span>Remove from “{fromPlaylist.name}”</span><Glyph d="M4 9h10" />
+            </button>
+          )}
 
           <p className="sheet__label">Add to playlist</p>
           <button className="sheet__item sheet__item--new" onClick={() => setCreating(true)}>
