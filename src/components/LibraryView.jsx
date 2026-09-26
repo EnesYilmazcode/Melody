@@ -58,21 +58,27 @@ export default function LibraryView() {
           <div>
             <p className="eyebrow">Your music</p>
             <h1>Library</h1>
-            <p className="view__meta dim">{summarize(tracks)}</p>
+            {tracks.length > 0 && <p className="view__meta dim">{summarize(tracks)}</p>}
           </div>
-          <ImportButton />
+          {/* An empty library shows its own, bigger Import in the empty state. */}
+          {tracks.length > 0 && <ImportButton />}
         </div>
-        <div className="segrow">
-          <div className="segmented">
-            <button className={!showStarred ? 'on' : ''} onClick={() => setShowStarred(false)}>All</button>
-            <button className={showStarred ? 'on' : ''} onClick={() => setShowStarred(true)}>Favorites</button>
+        {tracks.length > 0 && (
+          <div className="segrow">
+            <div className="segmented">
+              <button className={!showStarred ? 'on' : ''} onClick={() => setShowStarred(false)}>All</button>
+              <button className={showStarred ? 'on' : ''} onClick={() => setShowStarred(true)}>Favorites</button>
+            </div>
+            {/* One tap cycles the sort; a second segmented row cost a fifth of the screen. */}
+            <button
+              className="sortbtn"
+              onClick={() => pickSort(SORTS[(SORTS.findIndex((o) => o.value === sort) + 1) % SORTS.length].value)}
+              aria-label={`Sort: ${SORTS.find((o) => o.value === sort).label}. Tap to change.`}
+            >
+              <SortGlyph /> {SORTS.find((o) => o.value === sort).label}
+            </button>
           </div>
-          <div className="segmented">
-            {SORTS.map(({ value, label }) => (
-              <button key={value} className={sort === value ? 'on' : ''} onClick={() => pickSort(value)}>{label}</button>
-            ))}
-          </div>
-        </div>
+        )}
       </div>
 
       {shown.length > 0 ? (
@@ -118,4 +124,7 @@ function NotesGlyph() {
       <circle cx="16" cy="16" r="3" />
     </svg>
   )
+}
+function SortGlyph() {
+  return <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 4v16M3 16l4 4 4-4M17 20V4M13 8l4-4 4 4" /></svg>
 }

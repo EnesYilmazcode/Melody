@@ -595,3 +595,17 @@ body {
 .resume__label { font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
 .resume__title { color: var(--text); font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .resume__time { font-size: 13px; font-variant-numeric: tabular-nums; }
+
+/* ── polish ───────────────────────────────────────────────────── */
+/* One clear button: hide WebKit's own × inside type=search. */
+.searchbar__input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
+.artwork--img { display: block; overflow: hidden; flex-shrink: 0; background: var(--surface-2); }
+.artwork--img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.artwork__zoom { transform: scale(1.34); }
+.segrow { justify-content: space-between; }
+.sortbtn {
+  display: inline-flex; align-items: center; gap: 7px;
+  background: none; border: none; color: var(--text-dim);
+  font-family: var(--font); font-size: 14px; font-weight: 600;
+  padding: 8px 4px; cursor: pointer;
+}
