@@ -9,6 +9,9 @@ export default function PromptModal({
   placeholder = '',
   confirmLabel = 'Create',
   initialValue = '',
+  maxLength = 60,
+  inputMode = 'text',
+  autoCapitalize = 'words',
   onSubmit,
   onClose,
 }) {
@@ -46,10 +49,11 @@ export default function PromptModal({
           value={value}
           onChange={(e) => setValue(e.target.value)}
           placeholder={placeholder}
-          autoCapitalize="words"
+          inputMode={inputMode}
+          autoCapitalize={autoCapitalize}
           autoCorrect="off"
           enterKeyHint="done"
-          maxLength={60}
+          maxLength={maxLength}
         />
         <div className="modal__actions">
           <button type="button" className="btn btn--ghost" onClick={onClose}>Cancel</button>

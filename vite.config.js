@@ -20,14 +20,16 @@ const stripDevSamplesPlugin = () => ({
 // block. Sources: app assets are same-origin ('self'); thumbnails come from
 // YouTube's image CDNs; JSON is fetched from noembed + lrclib; imported audio
 // and artwork play from blob: URLs; React sets inline style attributes
-// ('unsafe-inline' for style only, never script).
+// ('unsafe-inline' for style only, never script). Podcasts widen img, media
+// and connect to any https: host, since feeds, cover art and episode audio
+// live wherever each show is hosted.
 const CSP = [
   "default-src 'self'",
   "script-src 'self'",
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https://i.ytimg.com https://*.ytimg.com https://*.ggpht.com",
-  "media-src 'self' blob:",
-  "connect-src 'self' https://noembed.com https://lrclib.net",
+  "img-src 'self' data: blob: https:",
+  "media-src 'self' blob: https:",
+  "connect-src 'self' https:",
   "font-src 'self'",
   "manifest-src 'self'",
   "worker-src 'self'",
@@ -114,6 +116,17 @@ export default defineConfig(({ command }) => ({
             handler: 'CacheFirst',
             options: {
               cacheName: 'yt-thumbs',
+              expiration: { maxEntries: 300, maxAgeSeconds: 60 * 60 * 24 * 90 },
+            },
+          },
+          // Podcast cover art, from whatever host each show uses. Opaque
+          // (status 0) responses are fine to cache for an <img>.
+          {
+            urlPattern: ({ request, url }) => request.destination === 'image' && url.origin !== self.location.origin,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'podcast-art',
+              cacheableResponse: { statuses: [0, 200] },
               expiration: { maxEntries: 300, maxAgeSeconds: 60 * 60 * 24 * 90 },
             },
           },

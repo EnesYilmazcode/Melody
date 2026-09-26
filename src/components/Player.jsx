@@ -31,7 +31,7 @@ export default function Player() {
         <span className="mini__meta">
           <span className="mini__title">{p.current.title}</span>
           <span className="mini__artist">
-            {p.missing ? 'Audio unavailable — re-import' : p.current.artist}
+            {p.missing ? missingShort(p.current) : p.current.artist}
           </span>
         </span>
         <span className="mini__controls" onClick={(e) => e.stopPropagation()}>
@@ -97,9 +97,7 @@ function NowPlaying({ p, onClose }) {
       </div>
 
       {p.missing ? (
-        <p className="now__missing" role="status">
-          Audio unavailable — the file for this track is missing. Re-import it to play.
-        </p>
+        <p className="now__missing" role="status">{missingLong(p.current)}</p>
       ) : (
         <div className="scrub">
           <input
@@ -119,21 +117,35 @@ function NowPlaying({ p, onClose }) {
       )}
 
       <div className="transport">
-        <button className="iconbtn" onClick={p.prev} aria-label="Previous"><PrevIcon /></button>
+        {p.longForm ? (
+          <button className="iconbtn skipbtn" onClick={() => p.skip(-15)} aria-label="Back 15 seconds"><SkipIcon back n={15} /></button>
+        ) : (
+          <button className="iconbtn" onClick={p.prev} aria-label="Previous"><PrevIcon /></button>
+        )}
         <button className="playbtn" onClick={p.toggle} aria-label={p.isPlaying ? 'Pause' : 'Play'} disabled={p.missing}>
           {p.isPlaying ? <PauseIcon big /> : <PlayIcon big />}
         </button>
-        <button className="iconbtn" onClick={p.next} aria-label="Next"><NextIcon /></button>
+        {p.longForm ? (
+          <button className="iconbtn skipbtn" onClick={() => p.skip(30)} aria-label="Forward 30 seconds"><SkipIcon n={30} /></button>
+        ) : (
+          <button className="iconbtn" onClick={p.next} aria-label="Next"><NextIcon /></button>
+        )}
       </div>
 
-      <button
-        className={`loopbtn loopbtn--${p.loopMode}`}
-        onClick={p.cycleLoop}
-        aria-label={loopLabel}
-      >
-        <RepeatIcon /> <span>{loopLabel}</span>
-        {p.loopMode === 'one' && <em className="loopbtn__one">1</em>}
-      </button>
+      {p.longForm ? (
+        <button className="loopbtn speedbtn" onClick={p.cycleSpeed} aria-label={`Playback speed ${p.speed}x`}>
+          <span>{p.speed}×</span>
+        </button>
+      ) : (
+        <button
+          className={`loopbtn loopbtn--${p.loopMode}`}
+          onClick={p.cycleLoop}
+          aria-label={loopLabel}
+        >
+          <RepeatIcon /> <span>{loopLabel}</span>
+          {p.loopMode === 'one' && <em className="loopbtn__one">1</em>}
+        </button>
+      )}
     </div>
   )
 }
@@ -189,6 +201,16 @@ function LyricsView({ lyrics, progress, onSeek, onResearch }) {
   )
 }
 
+// An episode that fails to load is usually just offline, not missing bytes.
+function missingShort(item) {
+  return item.kind === 'episode' ? "Can't stream right now" : 'Audio unavailable — re-import'
+}
+function missingLong(item) {
+  return item.kind === 'episode'
+    ? "Can't stream this episode right now. Download it while you have a connection to play it offline."
+    : 'Audio unavailable — the file for this track is missing. Re-import it to play.'
+}
+
 /* icons */
 const s = { fill: 'currentColor' }
 function LyricsIcon() { return <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 6h11M4 12h9M4 18h7" /><path d="M16 17V9l4-1.5V15" /><circle cx="14.5" cy="17" r="1.6" fill="currentColor" stroke="none" /><circle cx="18.5" cy="15" r="1.6" fill="currentColor" stroke="none" /></svg> }
@@ -199,3 +221,14 @@ function PrevIcon() { return <svg viewBox="0 0 24 24" width="22" height="22" {..
 function RepeatIcon() { return <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 2l4 4-4 4" /><path d="M3 11V9a4 4 0 0 1 4-4h14" /><path d="M7 22l-4-4 4-4" /><path d="M21 13v2a4 4 0 0 1-4 4H3" /></svg> }
 function ChevronDown() { return <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg> }
 function StarIcon({ filled }) { return <svg viewBox="0 0 24 24" width="24" height="24" fill={filled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinejoin="round"><path d="M12 3.5l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8L6.6 20l1-6L3.3 9.9l6-.9z" /></svg> }
+function SkipIcon({ back, n }) {
+  return (
+    <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <g transform={back ? undefined : 'translate(24 0) scale(-1 1)'}>
+        <path d="M4 12a8 8 0 1 0 2.3-5.7" />
+        <path d="M4 3v4h4" />
+      </g>
+      <text x="12" y="15.6" textAnchor="middle" fontSize="7.5" fontWeight="700" fill="currentColor" stroke="none">{n}</text>
+    </svg>
+  )
+}

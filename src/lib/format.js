@@ -18,3 +18,9 @@ export function formatTime(sec) {
   if (h) return `${h}:${m.toString().padStart(2, '0')}:${r}`
   return `${m}:${r}`
 }
+
+/** Remaining listening time, rounded to minutes: "42m left", "1h 5m left". */
+export function timeLeft(duration, position) {
+  const m = Math.max(1, Math.round(((duration || 0) - (position || 0)) / 60))
+  return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m left` : `${m}m left`
+}
