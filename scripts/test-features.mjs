@@ -22,7 +22,7 @@ await page.locator('input[type=file]').setInputFiles({
 })
 await page.waitForTimeout(1500)
 
-const artSrc = await page.locator('.row__main img.artwork').first().getAttribute('src').catch(() => null)
+const artSrc = await page.locator('.row__main .artwork img').first().getAttribute('src').catch(() => null)
 console.log('cover art src:', artSrc)
 
 // play it, open Now Playing

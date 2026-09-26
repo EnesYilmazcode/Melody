@@ -46,7 +46,7 @@ try {
   check('import reports the series playlist', true)
 
   await page.getByRole('button', { name: 'Playlists' }).click()
-  await page.getByText('Morning Show').click()
+  await page.locator('.plcard', { hasText: 'Morning Show' }).click()
   const titles = await page.locator('.row__title').allTextContents()
   check('playlist is in episode order', titles.join(',') === '001 Welcome,002 Second,003 Third,010 Wrap Up', titles.join(','))
 
@@ -60,7 +60,7 @@ try {
 
   await page.reload({ waitUntil: 'networkidle' })
   await page.getByRole('button', { name: 'Playlists' }).click()
-  await page.getByText('Morning Show').click()
+  await page.locator('.plcard', { hasText: 'Morning Show' }).click()
   const resume = page.locator('.resume')
   await resume.waitFor({ timeout: 5000 })
   const label = await resume.textContent()
@@ -87,7 +87,9 @@ try {
   await page.locator('input[type=file]').setInputFiles([file('Morning Show - 001 Welcome.wav', 340)])
   await page.waitForTimeout(1500)
   await page.getByRole('button', { name: 'Playlists' }).click()
-  check('no duplicate playlist on re-import', await page.getByText('Morning Show').count() === 1)
+  await page.locator('.plcard').first().waitFor({ timeout: 5000 })
+  const cards = await page.locator('.plcard').allTextContents()
+  check('no duplicate playlist on re-import', cards.filter((c) => c.includes('Morning Show')).length === 1, cards.join(' / '))
 } catch (e) {
   console.log('ERROR:', e.message)
   failed++
