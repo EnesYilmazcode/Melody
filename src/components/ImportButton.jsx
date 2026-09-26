@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { addLocalTrack, requestPersistentStorage, storageEstimate, seriesNumber, upsertSeriesPlaylist } from '../lib/db'
+import { useUI } from '../state/UIProvider'
 import { readDuration, parseFilename } from '../lib/audio'
 import { ensureLyrics } from '../lib/lyrics'
 import { fetchYouTubePreview } from '../lib/youtube'
@@ -10,16 +11,26 @@ import { fetchYouTubePreview } from '../lib/youtube'
 export default function ImportButton() {
   const inputRef = useRef(null)
   const [remaining, setRemaining] = useState(0)
-  const [notice, setNotice] = useState(null) // user-facing result/errors
+  const { showToast } = useUI() // results surface in the app-wide toast
 
   const onPick = async (e) => {
     // Name order with numbers compared as numbers, so a numbered series lands
     // in the library (and its playlist) in episode order.
-    const files = [...e.target.files].sort((a, b) =>
+    const picked = [...e.target.files].sort((a, b) =>
       a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }))
     e.target.value = '' // reset so the same file can be re-picked later
-    if (!files.length) return
-    setNotice(null)
+    if (!picked.length) return
+
+    // Select-All in the a-Shell folder sweeps in .json/.txt sidecars alongside
+    // the audio — the accept attr is advisory only on iOS, so filter here,
+    // before the quota pre-flight and the remaining counter see the list.
+    const files = picked.filter(
+      (f) => f.type.startsWith('audio/') || /\.(m4a|mp3|aac|wav|flac|ogg)$/i.test(f.name)
+    )
+    if (!files.length) {
+      showToast('No audio files in that selection.')
+      return
+    }
 
     await requestPersistentStorage() // ask iOS to keep the library durable
 
@@ -29,11 +40,12 @@ export default function ImportButton() {
     const totalBytes = files.reduce((n, f) => n + (f.size || 0), 0)
     const est = await storageEstimate()
     if (est?.quota && est.usage + totalBytes > est.quota * 0.95) {
-      setNotice("Not enough storage to import these. Free up space and try again.")
+      showToast("Not enough storage to import these. Free up space and try again.")
       return
     }
 
     setRemaining(files.length)
+    let added = 0
     let skipped = 0
     let failed = 0
     let outOfSpace = false
@@ -64,6 +76,9 @@ export default function ImportButton() {
           skipped++
           continue
         }
+        // Counted explicitly rather than derived — the out-of-space break below
+        // exits the loop early, which would make length arithmetic lie.
+        added++
         // fetch lyrics in the background (cached for offline); don't block import
         ensureLyrics({ id, title, artist, duration }).catch(() => {})
       } catch (err) {
@@ -84,18 +99,20 @@ export default function ImportButton() {
     for (const [name, ids] of series) {
       if (ids.length < 3) continue
       await upsertSeriesPlaylist(name, ids).catch(() => {})
-      made.push(name)
+      made.push(`Playlist “${name}” is ready, in order`)
     }
 
-    // Only surface something when it's worth telling the user about.
+    // Always leave a summary — a re-pick of the whole folder is a sync, and
+    // "nothing happened" must still be an answer, never a silent no-op.
     if (outOfSpace) {
-      setNotice("Ran out of storage — not all tracks were imported.")
+      showToast("Ran out of storage — not all tracks were imported.")
+    } else if (added === 0 && failed === 0) {
+      showToast(['No new songs — everything already in your library.', ...made].join(' · '))
     } else {
-      const parts = []
+      const parts = [`${added} added`]
       if (skipped) parts.push(`${skipped} already in your library`)
       if (failed) parts.push(`${failed} couldn't be imported`)
-      for (const name of made) parts.push(`Playlist “${name}” is ready, in order`)
-      setNotice(parts.length ? parts.join(' · ') : null)
+      showToast([...parts, ...made].join(' · '))
     }
   }
 
@@ -118,11 +135,6 @@ export default function ImportButton() {
         hidden
         onChange={onPick}
       />
-      {notice && (
-        <p className="importnote" role="status">
-          {notice}
-        </p>
-      )}
     </>
   )
 }
