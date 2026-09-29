@@ -55,12 +55,16 @@ html,
 body,
 #root {
   /* svh is the small viewport (always <= visible), so the dock can never sit
-     below the fold at first paint; vh/dvh are fallbacks. */
+     below the fold at first paint; vh/dvh are fallbacks. Installed, --app-h
+     is the real screen height (see lib/viewport.js). */
   height: 100vh;
   height: 100dvh;
-  height: 100svh;
+  height: var(--app-h, 100svh);
   margin: 0;
 }
+
+/* Anything the layout doesn't cover paints as app background, never black. */
+html { background: var(--bg); }
 
 body {
   /* black shows only in the gap above Now Playing, like an iOS card stack */
@@ -268,7 +272,7 @@ svg { display: block; flex-shrink: 0; }
   font: 500 13.5px/1.35 var(--font); text-align: center; cursor: pointer; z-index: 5;
   animation: toast-in var(--dur-fade) var(--ease-out);
 }
-.versionpeek { color: var(--dim); font-size: 11.5px; white-space: nowrap; }
+.versionpeek { color: var(--dim); font-size: 11.5px; white-space: nowrap; line-height: 1.5; }
 @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 6px); } }
 
 /* import progress under the top bar */
@@ -392,7 +396,7 @@ svg { display: block; flex-shrink: 0; }
 
 /* ── sheets (grouped, like an iOS action sheet) ──────────────── */
 .sheet-overlay {
-  position: fixed; inset: 0; z-index: 60;
+  position: fixed; inset: 0; bottom: calc(0px - var(--app-gap, 0px)); z-index: 60;
   background: rgba(0, 0, 0, .45);
   animation: fade var(--dur-fade) ease;
   transition: opacity var(--dur-fade);
@@ -400,7 +404,7 @@ svg { display: block; flex-shrink: 0; }
 .sheet-overlay.is-closing { opacity: 0; }
 @keyframes fade { from { opacity: 0; } }
 .sheet {
-  position: fixed; left: 8px; right: 8px; bottom: calc(var(--sab) + 8px); z-index: 61;
+  position: fixed; left: 8px; right: 8px; bottom: calc(var(--sab) + 8px - var(--app-gap, 0px)); z-index: 61;
   display: flex; flex-direction: column; gap: 8px;
   max-height: calc(100% - var(--sat) - 40px);
   will-change: transform;
@@ -449,7 +453,7 @@ svg { display: block; flex-shrink: 0; }
 
 /* ── centered modal (new playlist name, confirm) ─────────────── */
 .modal-overlay {
-  position: fixed; inset: 0; z-index: 70;
+  position: fixed; inset: 0; bottom: calc(0px - var(--app-gap, 0px)); z-index: 70;
   background: rgba(0, 0, 0, .55);
   display: flex; align-items: flex-start; justify-content: center;
   padding: calc(var(--sat) + 14vh) 24px 24px;
@@ -476,7 +480,7 @@ svg { display: block; flex-shrink: 0; }
 
 /* ── Now Playing ─────────────────────────────────────────────── */
 .now {
-  position: fixed; left: 0; right: 0; top: calc(var(--sat) + 7px); bottom: 0; z-index: 50;
+  position: fixed; left: 0; right: 0; top: calc(var(--sat) + 7px); bottom: calc(0px - var(--app-gap, 0px)); z-index: 50;
   border-radius: 14px 14px 0 0; overflow: hidden; isolation: isolate;
   display: flex; flex-direction: column; align-items: stretch;
   padding: 0 24px calc(max(var(--sab), 12px) + 12px);

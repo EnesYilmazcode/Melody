@@ -17,7 +17,8 @@ const TABS = [
 ]
 
 // Hidden build readout: long-press the tab bar to see which deploy is running
-// (commit + build time), to confirm the PWA auto-updated. Tap dismisses.
+// (commit + build time), to confirm the PWA auto-updated, plus the viewport
+// heights iOS reports. Tap dismisses.
 function VersionPeek({ onDismiss }) {
   useEffect(() => {
     const t = setTimeout(onDismiss, 5000)
@@ -28,6 +29,7 @@ function VersionPeek({ onDismiss }) {
   return (
     <button className="versionpeek" onClick={onDismiss}>
       build {commit} · {built.toLocaleDateString()} {built.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+      <br />view {window.innerHeight} · screen {screen.height} · app {getComputedStyle(document.documentElement).getPropertyValue('--app-h') || 'css'}
     </button>
   )
 }
