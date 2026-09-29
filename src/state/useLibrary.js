@@ -27,8 +27,9 @@ export function useTrack(trackId) {
 }
 
 /**
- * Fuzzy, as-you-type search over a track list. Returns the full list (newest
- * first) when the query is empty, else Fuse-ranked matches on title + artist.
+ * As-you-type search over a track list. Returns the full list (newest first)
+ * when the query is empty. Plain substring hits on the title come first, then
+ * Fuse's typo-tolerant matches on title + artist fill in behind them.
  */
 export function useSearch(tracks, query) {
   const fuse = useMemo(
@@ -38,7 +39,8 @@ export function useSearch(tracks, query) {
           { name: 'title', weight: 0.7 },
           { name: 'artist', weight: 0.3 },
         ],
-        threshold: 0.4, // 0 = exact, 1 = match anything; 0.4 is forgiving but sane
+        threshold: 0.3, // 0 = exact, 1 = match anything
+        minMatchCharLength: 2,
         ignoreLocation: true,
       }),
     [tracks],
@@ -47,7 +49,10 @@ export function useSearch(tracks, query) {
   return useMemo(() => {
     const q = query.trim()
     if (!q) return tracks || []
-    return fuse.search(q).map((r) => r.item)
+    const needle = q.toLowerCase()
+    const exact = (tracks || []).filter((t) => (t.title || '').toLowerCase().includes(needle))
+    const seen = new Set(exact.map((t) => t.id))
+    return [...exact, ...fuse.search(q).map((r) => r.item).filter((t) => !seen.has(t.id))]
   }, [fuse, query, tracks])
 }
 

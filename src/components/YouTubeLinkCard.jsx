@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
 import { buildYtDlpCommand, fetchYouTubePreview } from '../lib/youtube'
+import Icon from './Icon'
 
 // The thumbnail URL comes from a third-party (noembed) response, so validate it
 // before using it as an <img src>: require https and a YouTube-owned host,
-// otherwise drop it (the card still shows the title/author).
+// otherwise drop it (the card still shows the title).
 function safeThumb(url) {
   try {
     const u = new URL(url)
@@ -18,18 +19,18 @@ function safeThumb(url) {
   return null
 }
 
-// Shown in Search when a YouTube link is present. Previews the video and offers
-// the a-Shell command. The command box itself is the copy control (tap to copy)
-// — and pasting via the search bar pre-copies it, so usually it's already done.
+// Shown in Search when a YouTube link is present: previews the video and copies
+// the a-Shell command. Pasting via the search bar pre-copies it, so usually
+// it's already done.
 export default function YouTubeLinkCard({ yt, copied }) {
-  const [preview, setPreview] = useState(null)
+  const [preview, setPreview] = useState(undefined) // undefined = loading
   const [tapCopied, setTapCopied] = useState(false)
   const command = buildYtDlpCommand(yt.url)
   const done = copied || tapCopied
 
   useEffect(() => {
     let alive = true
-    setPreview(null)
+    setPreview(undefined)
     setTapCopied(false)
     fetchYouTubePreview(yt.id).then((p) => alive && setPreview(p))
     return () => { alive = false }
@@ -41,30 +42,25 @@ export default function YouTubeLinkCard({ yt, copied }) {
       setTapCopied(true)
       setTimeout(() => setTapCopied(false), 1800)
     } catch {
-      /* ignore — box content is still readable */
+      /* ignore: the command stays readable below */
     }
   }
 
+  const thumb = preview && safeThumb(preview.thumbnail)
   return (
     <div className="ytcard">
-      {preview ? (
-        <div className="ytcard__preview">
-          {safeThumb(preview.thumbnail) && <img src={safeThumb(preview.thumbnail)} alt="" />}
-          <div className="ytcard__pmeta">
-            <p className="ytcard__title">{preview.title}</p>
-            <p className="dim">{preview.author}</p>
-          </div>
-        </div>
-      ) : (
-        <p className="dim">Video {yt.id}</p>
-      )}
+      <div className="ytcard__preview">
+        {thumb ? <img src={thumb} alt="" /> : <span className="ytcard__skel" />}
+        <p className="ytcard__title">{preview === undefined ? '' : preview?.title || `Video ${yt.id}`}</p>
+      </div>
 
-      <button className={`ytcard__cmd ${done ? 'is-copied' : ''}`} onClick={copy}>
-        <code>{command}</code>
-        <span className="ytcard__hint">{done ? '✓ Copied — paste in a-Shell' : 'Tap to copy'}</span>
+      <button className={`btn ${done ? '' : 'btn--accent'} ytcard__copy`} onClick={copy}>
+        <Icon name={done ? 'check' : 'paste'} size={20} />
+        {done ? 'Copied, paste it in a-Shell' : 'Copy for a-Shell'}
       </button>
+      <p className="ytcard__cmd">{command}</p>
 
-      <p className="ytcard__note">Then come back and tap <b>Import</b> in Library.</p>
+      <p className="ytcard__note">Then come back, tap <b>⋯</b> in Library and choose <b>Import from Files</b>.</p>
     </div>
   )
 }
