@@ -19,7 +19,7 @@ await page.waitForTimeout(800)
 
 // Import a file — reuse a sample WAV but give it a clean display name.
 const buf = readFileSync(resolve(here, '../public/samples/sample-d.wav'))
-await page.locator('input[type=file]').setInputFiles({
+await page.locator('input[type=file][multiple]').setInputFiles({
   name: 'Imported Test.wav',
   mimeType: 'audio/wav',
   buffer: buf,

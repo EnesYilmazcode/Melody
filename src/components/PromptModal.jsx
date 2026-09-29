@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useDialog } from '../lib/useDialog'
 
 // A small centered text-entry modal — replaces window.prompt() so naming a
@@ -31,7 +32,8 @@ export default function PromptModal({
     if (v) onSubmit(v)
   }
 
-  return (
+  // Portaled so it never inherits the page's Now Playing recede transform.
+  return createPortal(
     <div className="modal-overlay" onClick={onClose}>
       <form
         className="modal"
@@ -60,6 +62,7 @@ export default function PromptModal({
           <button type="submit" className="btn btn--accent" disabled={!value.trim()}>{confirmLabel}</button>
         </div>
       </form>
-    </div>
+    </div>,
+    document.body,
   )
 }

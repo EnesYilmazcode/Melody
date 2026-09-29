@@ -118,7 +118,7 @@ export async function storageEstimate() {
  * is already imported. Returns `{ id, duplicate }`: `duplicate` is true when an
  * existing track matched and nothing was written.
  */
-export async function addLocalTrack({ title, artist, duration, blob, thumbnailUrl = null, youtubeId = null }) {
+export async function addLocalTrack({ title, artist, duration, blob, thumbnailUrl = null, youtubeId = null, dateAdded = Date.now() }) {
   const nTitle = title || 'Unknown'
   const nArtist = artist || 'Imported'
   const nDuration = duration || 0
@@ -165,7 +165,7 @@ export async function addLocalTrack({ title, artist, duration, blob, thumbnailUr
       starred: 0,
       playCount: 0,
       lastPlayedAt: null,
-      dateAdded: Date.now(),
+      dateAdded,
     })
     result = { id, duplicate: false }
   })

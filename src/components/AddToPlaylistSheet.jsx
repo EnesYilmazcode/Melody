@@ -3,101 +3,104 @@ import { useUI } from '../state/UIProvider'
 import { usePlaylists } from '../state/useLibrary'
 import { usePlayer } from '../state/PlayerProvider'
 import { addToPlaylist, createPlaylist, toggleStar, deleteTrack, removeFromPlaylist } from '../lib/db'
+import { displayTitle } from '../lib/series'
+import Sheet from './Sheet'
+import Artwork from './Artwork'
+import Icon from './Icon'
 import PromptModal from './PromptModal'
 import ConfirmModal from './ConfirmModal'
-import { useDialog } from '../lib/useDialog'
 
-// Track actions sheet (opened from a TrackRow's ⋯). Quick playback actions on
-// top (Play next / Add to queue / Favorite), then the "add to playlist" picker.
+// Track sheet (hold a row, or ⋯ → Add to playlist in Now Playing): quick
+// playback actions, the playlist picker, and delete. Rendered once at the root.
 export default function AddToPlaylistSheet() {
   const { addTarget, fromPlaylist, closeAddToPlaylist } = useUI()
   const playlists = usePlaylists()
-  const { playNext, addToQueue } = usePlayer()
+  const { playNext, addToQueue, current } = usePlayer()
   const [creating, setCreating] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
-  // This host is always mounted (returns null when closed), so key the focus on
-  // whether a track is open, not on mount.
-  const dialog = useDialog(closeAddToPlaylist, { active: !!addTarget })
-  if (!addTarget) return null
+  // The sheet unmounts on close, but the modals it opens outlive it.
+  const [target, setTarget] = useState(null)
+  if (!addTarget && !target) return null
+  const track = addTarget || target
 
-  const close = closeAddToPlaylist
   const addToList = async (id) => {
-    await addToPlaylist(id, addTarget.id)
-    close()
+    await addToPlaylist(id, track.id)
   }
 
   return (
     <>
-      <div className="sheet-overlay" onClick={close}>
-        <div
-          className="sheet"
-          ref={dialog.ref}
-          onKeyDown={dialog.onKeyDown}
-          role="dialog"
-          aria-modal="true"
-          tabIndex={-1}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="sheet__grip" />
-          <p className="sheet__title">{addTarget.title}</p>
+      {addTarget && (
+        <Sheet onClose={closeAddToPlaylist} label={displayTitle(track)}>
+          {(close) => (
+            <>
+              <div className="sheet__grp sheet__grp--fixed">
+                <div className="sheet__head">
+                  <Artwork track={track} size={40} />
+                  <span className="sheet__headtitle">{displayTitle(track)}</span>
+                </div>
+                {current && current.id !== track.id && (
+                  <>
+                    <button className="sheet__row" onClick={() => close(() => playNext(track))}>
+                      <span>Play next</span><Icon name="playnext" size={20} />
+                    </button>
+                    <button className="sheet__row" onClick={() => close(() => addToQueue(track))}>
+                      <span>Add to queue</span><Icon name="queue" size={20} />
+                    </button>
+                  </>
+                )}
+                <button className="sheet__row" onClick={() => close(() => toggleStar(track.id).catch(() => {}))}>
+                  <span>{track.starred ? 'Remove from favorites' : 'Add to favorites'}</span>
+                  <Icon name={track.starred ? 'star' : 'starline'} size={20} />
+                </button>
+                {fromPlaylist && (
+                  <button className="sheet__row" onClick={() => close(() => removeFromPlaylist(fromPlaylist.id, track.id).catch(() => {}))}>
+                    <span>Remove from {fromPlaylist.name}</span><Icon name="minus" size={20} />
+                  </button>
+                )}
+              </div>
 
-          <button className="sheet__item" onClick={() => { playNext(addTarget); close() }}>
-            <span>Play next</span><Glyph d="M5 4l7 5-7 5zM14 4v10" />
-          </button>
-          <button className="sheet__item" onClick={() => { addToQueue(addTarget); close() }}>
-            <span>Add to queue</span><Glyph d="M3 5h10M3 9h10M3 13h6M14 11v6M14 17l3-2M14 17l-3-2" />
-          </button>
-          <button className="sheet__item" onClick={() => { toggleStar(addTarget.id).catch(() => {}); close() }}>
-            <span>{addTarget.starred ? 'Remove from favorites' : 'Add to favorites'}</span>
-            <Glyph filled={!!addTarget.starred} d="M9 1.5l2.2 4.5 5 .7-3.6 3.5.85 5L9 12.9 4.7 15.2l.85-5L2 6.7l5-.7z" />
-          </button>
+              <div className="sheet__grp sheet__grp--scroll" data-scroll>
+                <p className="sheet__label" style={{ boxShadow: 'none' }}>Add to playlist</p>
+                <button className="sheet__row sheet__row--accent" onClick={() => { setTarget(track); setCreating(true); close() }}>
+                  <span>New playlist</span><Icon name="plus" size={20} />
+                </button>
+                {(playlists || []).map((p) => {
+                  const has = p.trackIds.includes(track.id)
+                  return (
+                    <button key={p.id} className="sheet__row" onClick={() => !has && close(() => addToList(p.id))} disabled={has} aria-label={has ? `${p.name}, added` : p.name}>
+                      <span>{p.name}</span>
+                      {has ? <Icon name="check" size={20} className="check" /> : <span className="sheet__count num">{p.trackIds.length}</span>}
+                    </button>
+                  )
+                })}
+              </div>
 
-          {fromPlaylist && (
-            <button
-              className="sheet__item"
-              onClick={() => { removeFromPlaylist(fromPlaylist.id, addTarget.id).catch(() => {}); close() }}
-            >
-              <span>Remove from “{fromPlaylist.name}”</span><Glyph d="M4 9h10" />
-            </button>
+              {track.srcType === 'idb' && (
+                <div className="sheet__grp sheet__grp--fixed">
+                  <button className="sheet__row sheet__row--danger" onClick={() => { setTarget(track); setConfirmDelete(true); close() }}>
+                    <span>Delete from library</span><Icon name="trash" size={20} />
+                  </button>
+                </div>
+              )}
+
+              <div className="sheet__grp sheet__grp--fixed">
+                <button className="sheet__row sheet__row--c" onClick={() => close()}>Cancel</button>
+              </div>
+            </>
           )}
-
-          <p className="sheet__label">Add to playlist</p>
-          <button className="sheet__item sheet__item--new" onClick={() => setCreating(true)}>
-            + New playlist
-          </button>
-          {(playlists || []).map((p) => {
-            const has = p.trackIds.includes(addTarget.id)
-            return (
-              <button key={p.id} className="sheet__item" onClick={() => !has && addToList(p.id)} disabled={has}>
-                <span>{p.name}</span>
-                <span className="dim">{has ? '✓ added' : `${p.trackIds.length}`}</span>
-              </button>
-            )
-          })}
-
-          {addTarget.srcType === 'idb' && (
-            <button
-              className="sheet__item sheet__item--danger"
-              onClick={() => setConfirmDelete(true)}
-            >
-              <span>Delete from library</span>
-              <svg viewBox="0 0 18 18" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M3 5h12M7 5V3h4v2M6 5l.8 10h4.4L12 5" /></svg>
-            </button>
-          )}
-
-          <button className="btn btn--ghost sheet__cancel" onClick={close}>Cancel</button>
-        </div>
-      </div>
+        </Sheet>
+      )}
 
       {creating && (
         <PromptModal
           title="New playlist"
           placeholder="Playlist name"
-          onClose={() => setCreating(false)}
+          onClose={() => { setCreating(false); setTarget(null) }}
           onSubmit={async (name) => {
             const id = await createPlaylist(name)
-            setCreating(false)
             await addToList(id)
+            setCreating(false)
+            setTarget(null)
           }}
         />
       )}
@@ -105,24 +108,16 @@ export default function AddToPlaylistSheet() {
       {confirmDelete && (
         <ConfirmModal
           title="Delete from library?"
-          message={`"${addTarget.title}" and its downloaded audio will be removed. This can't be undone.`}
+          message={`“${displayTitle(track)}” and its audio will be removed from this phone. This can't be undone.`}
           confirmLabel="Delete"
           onConfirm={async () => {
-            await deleteTrack(addTarget.id)
+            await deleteTrack(track.id)
             setConfirmDelete(false)
-            close()
+            setTarget(null)
           }}
-          onClose={() => setConfirmDelete(false)}
+          onClose={() => { setConfirmDelete(false); setTarget(null) }}
         />
       )}
     </>
-  )
-}
-
-function Glyph({ d, filled }) {
-  return (
-    <svg viewBox="0 0 18 18" width="18" height="18" fill={filled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d={d} />
-    </svg>
   )
 }

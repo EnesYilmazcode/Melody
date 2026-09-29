@@ -48,9 +48,12 @@ export function useLongPress(onLongPress, delay = 450) {
   return {
     handlers: {
       onTouchStart: (e) => begin(e, true),
-      onTouchEnd: () => {
+      onTouchEnd: (e) => {
         clear()
         touchedAt.current = Date.now()
+        // After a hold, cancel the compat mousedown/click so lifting the
+        // finger doesn't tap whatever the sheet put under it.
+        if (fired.current && e.cancelable) e.preventDefault()
       },
       onTouchMove: move,
       onTouchCancel: clear, // a system-interrupted touch must not leave the timer armed

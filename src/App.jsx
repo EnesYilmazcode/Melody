@@ -1,25 +1,23 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { PlayerProvider } from './state/PlayerProvider'
 import { UIProvider, useUI } from './state/UIProvider'
 import { useLongPress } from './lib/useLongPress'
 import SearchView from './components/SearchView'
 import LibraryView from './components/LibraryView'
 import PlaylistsView from './components/PlaylistsView'
-import PodcastsView from './components/PodcastsView'
 import Player from './components/Player'
 import AddToPlaylistSheet from './components/AddToPlaylistSheet'
+import Icon from './components/Icon'
 
+// Podcasts stay in the codebase (and in backups) but are off the tab bar.
 const TABS = [
-  { id: 'search', label: 'Search', icon: SearchIcon },
-  { id: 'library', label: 'Library', icon: LibraryIcon },
-  { id: 'playlists', label: 'Playlists', icon: PlaylistIcon },
-  { id: 'podcasts', label: 'Podcasts', icon: PodcastIcon },
+  { id: 'library', label: 'Library', icon: 'tab_library' },
+  { id: 'search', label: 'Search', icon: 'tab_search' },
+  { id: 'playlists', label: 'Playlists', icon: 'tab_playlists' },
 ]
 
-// Hidden build readout: invisible in normal use; long-press anywhere on the
-// tab bar to peek at which deploy is running (commit + build time), so you can
-// confirm the PWA auto-updated without a version string cluttering the UI.
-// Auto-hides; tapping it dismisses it immediately.
+// Hidden build readout: long-press the tab bar to see which deploy is running
+// (commit + build time), to confirm the PWA auto-updated. Tap dismisses.
 function VersionPeek({ onDismiss }) {
   useEffect(() => {
     const t = setTimeout(onDismiss, 5000)
@@ -35,11 +33,9 @@ function VersionPeek({ onDismiss }) {
 }
 
 // Transient status pill above the dock (import summaries, restore results).
-// Same lifecycle as VersionPeek: auto-hides, tap dismisses. Keyed by toast id
-// in ToastHost so a repeat of the same message restarts the timer.
 function Toast({ message, onDismiss }) {
   useEffect(() => {
-    const t = setTimeout(onDismiss, 4000)
+    const t = setTimeout(onDismiss, 5000)
     return () => clearTimeout(t)
   }, [onDismiss])
   return (
@@ -49,70 +45,84 @@ function Toast({ message, onDismiss }) {
   )
 }
 
-// Rendered inside the dock, above VersionPeek. Must stay conditional — a
-// permanently-mounted element before the tabbar would break the
-// .dock > .tabbar:first-child divider rule.
 function ToastHost() {
   const { toast, clearToast } = useUI()
   return toast && <Toast key={toast.id} message={toast.message} onDismiss={clearToast} />
 }
 
-export default function App() {
-  const [tab, setTab] = useState('library')
+function Shell() {
+  const { tab, setTab, playlistId, setPlaylistId } = useUI()
+  const [query, setQuery] = useState('') // kept across tab switches
   const [showVersion, setShowVersion] = useState(false)
   const { handlers: versionPress, suppressClick } = useLongPress(() => setShowVersion(true))
+  const appRef = useRef(null)
+  const dockRef = useRef(null)
+  const scrollRef = useRef(null)
+  const scrollTops = useRef({})
+
+  // Content scrolls under the translucent dock; pad it by the dock's height.
+  useLayoutEffect(() => {
+    const dock = dockRef.current
+    const set = () => appRef.current?.style.setProperty('--dock-h', `${dock.offsetHeight}px`)
+    set()
+    const ro = new ResizeObserver(set)
+    ro.observe(dock)
+    return () => ro.disconnect()
+  }, [])
+
+  // Each tab comes back where you left it.
+  useLayoutEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollTops.current[tab] || 0
+  }, [tab])
+
+  const pick = (id) => {
+    if (suppressClick()) return
+    const el = scrollRef.current
+    if (id === tab) {
+      // iOS convention: re-tapping the active tab pops to its root, then to the top.
+      if (id === 'playlists' && playlistId != null) setPlaylistId(null)
+      else el?.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
+    if (el) scrollTops.current[tab] = el.scrollTop
+    setTab(id)
+  }
 
   return (
-    <UIProvider>
-      <PlayerProvider>
-        <div className="app">
-          <main className="content">
-            {tab === 'search' && <SearchView />}
-            {tab === 'library' && <LibraryView />}
-            {tab === 'playlists' && <PlaylistsView />}
-            {tab === 'podcasts' && <PodcastsView />}
-          </main>
+    <div className="app" ref={appRef}>
+      <main className="content" ref={scrollRef}>
+        {tab === 'library' && <LibraryView />}
+        {tab === 'search' && <SearchView query={query} setQuery={setQuery} />}
+        {tab === 'playlists' && <PlaylistsView scrollRef={scrollRef} />}
+      </main>
 
-          {/* Floating dock: mini-player card stacked above the tab bar */}
-          <div className="dock">
-            {showVersion && <VersionPeek onDismiss={() => setShowVersion(false)} />}
-            <ToastHost />
-            <Player />
-            {/* Long-press handlers live on the nav; suppressClick keeps the
-                long-press from also switching tabs on release. */}
-            <nav className="tabbar" {...versionPress}>
-            {TABS.map(({ id, label, icon: Icon }) => (
-              <button
-                key={id}
-                className={`tab ${tab === id ? 'tab--active' : ''}`}
-                onClick={() => {
-                  if (suppressClick()) return
-                  setTab(id)
-                }}
-              >
-                <Icon />
-                <span>{label}</span>
-              </button>
-            ))}
-            </nav>
-          </div>
+      <div className="dock" ref={dockRef}>
+        {showVersion && <VersionPeek onDismiss={() => setShowVersion(false)} />}
+        <ToastHost />
+        <Player />
+        {/* Long-press handlers live on the nav; suppressClick keeps the
+            long-press from also switching tabs on release. */}
+        <nav className="tabs" {...versionPress}>
+          {TABS.map(({ id, label, icon }) => (
+            <button key={id} className={`tab ${tab === id ? 'tab--on' : ''}`} onClick={() => pick(id)} aria-current={tab === id ? 'page' : undefined}>
+              <Icon name={icon} size={26} />
+              <span>{label}</span>
+            </button>
+          ))}
+        </nav>
+      </div>
 
-          <AddToPlaylistSheet />
-        </div>
-      </PlayerProvider>
-    </UIProvider>
+      <AddToPlaylistSheet />
+    </div>
   )
 }
 
-function SearchIcon() {
-  return <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>
-}
-function LibraryIcon() {
-  return <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V6l10-2v12" /><circle cx="6" cy="18" r="3" /><circle cx="16" cy="16" r="3" /></svg>
-}
-function PlaylistIcon() {
-  return <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h13M3 12h9M3 18h9" /><path d="M16 13v6" /><circle cx="19" cy="19" r="2.5" /></svg>
-}
-function PodcastIcon() {
-  return <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></svg>
+export default function App() {
+  return (
+    <UIProvider>
+      <PlayerProvider>
+        <Shell />
+      </PlayerProvider>
+    </UIProvider>
+  )
 }

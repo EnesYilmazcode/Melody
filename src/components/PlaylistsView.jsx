@@ -1,121 +1,79 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { usePlaylists, useTracks } from '../state/useLibrary'
-import { createPlaylist, renamePlaylist, deletePlaylist, exportBackup, importBackup } from '../lib/db'
+import { createPlaylist, renamePlaylist, deletePlaylist } from '../lib/db'
 import { usePlayer } from '../state/PlayerProvider'
 import { useUI } from '../state/UIProvider'
 import { useLongPress } from '../lib/useLongPress'
-import { summarize, formatTime } from '../lib/format'
+import { formatTotalDuration, formatTime } from '../lib/format'
+import { displayTitle } from '../lib/series'
 import { shuffle } from '../lib/shuffle'
 import Artwork from './Artwork'
 import TrackRow from './TrackRow'
+import Icon from './Icon'
 import PromptModal from './PromptModal'
 import ConfirmModal from './ConfirmModal'
 import PlaylistActionsSheet from './PlaylistActionsSheet'
 
-export default function PlaylistsView() {
+export default function PlaylistsView({ scrollRef }) {
   const playlists = usePlaylists()
-  const allTracks = useTracks() // resolves each card's mosaic + duration meta
-  const { showToast } = useUI()
-  const [openId, setOpenId] = useState(null)
+  const allTracks = useTracks() // resolves each row's cover + duration meta
+  const { playlistId: openId, setPlaylistId: setOpenId } = useUI()
   const [creating, setCreating] = useState(false)
   const [actionsFor, setActionsFor] = useState(null) // playlist in the ⋯ sheet
   const [renaming, setRenaming] = useState(null)
   const [deleting, setDeleting] = useState(null)
-  const restoreRef = useRef(null)
 
   const open = playlists?.find((p) => p.id === openId)
-
-  const onExport = async () => {
-    try {
-      const data = await exportBackup()
-      const name = `melody-backup-${new Date().toISOString().slice(0, 10)}.json`
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-      // On iPhone the share sheet is the reliable way out ("Save to Files");
-      // a home-screen app can't follow a download link.
-      const file = new File([blob], name, { type: 'application/json' })
-      if (navigator.canShare?.({ files: [file] })) {
-        try {
-          await navigator.share({ files: [file] })
-        } catch (err) {
-          if (err?.name !== 'AbortError') throw err
-        }
-        return
-      }
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = name
-      a.click()
-      // Revoke once the download has had a moment to start — leaked object
-      // URLs pin their Blobs in memory for the app's whole lifetime.
-      setTimeout(() => URL.revokeObjectURL(url), 5000)
-    } catch {
-      showToast("Couldn't export the backup.")
-    }
-  }
-
-  const onRestore = async (e) => {
-    const file = e.target.files[0]
-    e.target.value = '' // reset so the same file can be re-picked later
-    if (!file) return
-    try {
-      // Parse here, outside importBackup's Dexie transaction — awaiting
-      // file.text() inside the transaction zone would kill it.
-      const parsed = JSON.parse(await file.text())
-      const { tracks, playlists: pls, podcasts } = await importBackup(parsed)
-      showToast(`${tracks} songs · ${pls} playlists${podcasts ? ` · ${podcasts} shows` : ''} restored`)
-    } catch {
-      showToast("Couldn't read that backup file.")
-    }
-  }
-
-  // Resolve ids the same way PlaylistDetail does, dropping dangling ids —
+  // Resolve ids the same way PlaylistDetail does, dropping dangling ids:
   // deleted or restored-but-not-reimported tracks must not inflate the counts.
   const byId = allTracks && new Map(allTracks.map((t) => [t.id, t]))
+  const resolve = (p) => p.trackIds.map((id) => byId.get(id)).filter(Boolean)
+
+  // A new view starts at the top.
+  useEffect(() => {
+    if (scrollRef?.current) scrollRef.current.scrollTop = 0
+  }, [openId, scrollRef])
+
+  if (playlists === undefined || allTracks === undefined) return <section className="view" />
 
   return (
     <section className="view">
-      {playlists === undefined || allTracks === undefined ? (
-        <p className="dim">Loading…</p>
-      ) : open ? (
-        <PlaylistDetail playlist={open} onBack={() => setOpenId(null)} onActions={() => setActionsFor(open)} />
+      {open ? (
+        <PlaylistDetail
+          playlist={open}
+          tracks={resolve(open)}
+          scrollRef={scrollRef}
+          onBack={() => setOpenId(null)}
+          onActions={() => setActionsFor(open)}
+        />
       ) : (
         <>
-          {/* Same header shape the detail view uses, so nothing shifts. */}
-          <header className="phead">
-            <h1>Playlists</h1>
-            <button className="btn btn--accent" onClick={() => setCreating(true)}>+ New</button>
-          </header>
+          <div className="topbar">
+            <button className="iconbtn" onClick={() => setCreating(true)} aria-label="New playlist">
+              <Icon name="plus" size={24} />
+            </button>
+          </div>
 
           {playlists.length === 0 ? (
-            <p className="dim">No playlists yet. Create one, then add tracks with the ⋯ menu. Hold a playlist to rename or delete it.</p>
+            <div className="emptystate">
+              <Icon name="tab_playlists" size={44} />
+              <h2>No playlists yet</h2>
+              <p>Make one, then press and hold any song to add it.</p>
+              <button className="btn btn--accent" onClick={() => setCreating(true)}>New playlist</button>
+            </div>
           ) : (
             <div className="list">
               {playlists.map((p) => (
-                <PlaylistCard
+                <PlaylistRow
                   key={p.id}
                   playlist={p}
-                  tracks={p.trackIds.map((id) => byId.get(id)).filter(Boolean)}
+                  tracks={resolve(p)}
                   onOpen={() => setOpenId(p.id)}
                   onLongPress={() => setActionsFor(p)}
                 />
               ))}
             </div>
           )}
-
-          {/* Quiet backup corner. The file input lives here (not in App) so the
-              Library tab keeps exactly one file input for the test harnesses. */}
-          <div className="backuprow">
-            <button className="backupbtn" onClick={onExport}>Export backup</button>
-            <button className="backupbtn" onClick={() => restoreRef.current?.click()}>Restore</button>
-          </div>
-          <input
-            ref={restoreRef}
-            type="file"
-            accept=".json,application/json"
-            hidden
-            onChange={onRestore}
-          />
         </>
       )}
 
@@ -135,9 +93,10 @@ export default function PlaylistsView() {
       {actionsFor && (
         <PlaylistActionsSheet
           playlist={actionsFor}
+          count={resolve(actionsFor).length}
           onClose={() => setActionsFor(null)}
-          onRename={() => { setRenaming(actionsFor); setActionsFor(null) }}
-          onDelete={() => { setDeleting(actionsFor); setActionsFor(null) }}
+          onRename={() => setRenaming(actionsFor)}
+          onDelete={() => setDeleting(actionsFor)}
         />
       )}
 
@@ -154,7 +113,7 @@ export default function PlaylistsView() {
       {deleting && (
         <ConfirmModal
           title="Delete playlist?"
-          message={`“${deleting.name}” will be removed. Your tracks stay in the library.`}
+          message={`“${deleting.name}” will be removed. Your songs stay in the library.`}
           confirmLabel="Delete"
           onClose={() => setDeleting(null)}
           onConfirm={async () => {
@@ -168,71 +127,107 @@ export default function PlaylistsView() {
   )
 }
 
-function PlaylistCard({ playlist, tracks, onOpen, onLongPress }) {
+/** "12 songs, 48 min" with the numbers in the numeric voice. */
+function Meta({ tracks }) {
+  const n = tracks.length
+  const dur = formatTotalDuration(tracks.reduce((s, t) => s + (t.duration || 0), 0))
+  return (
+    <>
+      <span className="num">{n}</span> {n === 1 ? 'song' : 'songs'}{dur && <>, {dur}</>}
+    </>
+  )
+}
+
+// 2×2 of the first four covers when there are four; otherwise the first one.
+function Mosaic({ tracks, size = 56 }) {
+  if (tracks.length >= 4) {
+    return (
+      <span className="mosaic" aria-hidden="true">
+        {tracks.slice(0, 4).map((t) => <Artwork key={t.id} track={t} size={size / 2} radius={0} />)}
+      </span>
+    )
+  }
+  return (
+    <span className="mosaic mosaic--one" aria-hidden="true">
+      <Artwork track={tracks[0]} size={size} radius={0} />
+    </span>
+  )
+}
+
+function PlaylistRow({ playlist, tracks, onOpen, onLongPress }) {
   const lp = useLongPress(onLongPress)
   return (
-    <button
-      className="plcard"
-      {...lp.handlers}
-      onClick={() => { if (!lp.suppressClick()) onOpen() }}
-    >
-      {/* Spans only inside the card button — nested interactive elements broke
-          iOS taps before (ad39cc8). Artwork renders a deterministic gradient
-          for undefined tracks, which is the intended look for 0–3-song lists. */}
-      <span className="plcard__mosaic">
-        <Artwork track={tracks[0]} size={24} radius={0} />
-        <Artwork track={tracks[1]} size={24} radius={0} />
-        <Artwork track={tracks[2]} size={24} radius={0} />
-        <Artwork track={tracks[3]} size={24} radius={0} />
+    <button className="row plrow plcard" {...lp.handlers} onClick={() => { if (!lp.suppressClick()) onOpen() }}>
+      <Mosaic tracks={tracks} />
+      <span className="row__text">
+        <span className="row__title">{playlist.name}</span>
+        <span className="row__sub"><Meta tracks={tracks} /></span>
       </span>
-      <span className="plcard__text">
-        <span className="plcard__name">{playlist.name}</span>
-        <span className="dim plcard__meta">{summarize(tracks)}</span>
-      </span>
+      <Icon name="chev" size={14} className="chev" />
     </button>
   )
 }
 
-function PlaylistDetail({ playlist, onBack, onActions }) {
-  const allTracks = useTracks()
-  const { playQueue } = usePlayer()
-  if (allTracks === undefined) return <p className="dim">Loading…</p>
+function PlaylistDetail({ playlist, tracks, scrollRef, onBack, onActions }) {
+  const { playQueue, current, isPlaying } = usePlayer()
+  const [scrolled, setScrolled] = useState(false)
+  const bar = useRef(null)
+  const title = useRef(null)
 
-  // Resolve ids → track objects in saved order, dropping any since-deleted ids.
-  const byId = new Map(allTracks.map((t) => [t.id, t]))
-  const tracks = playlist.trackIds.map((id) => byId.get(id)).filter(Boolean)
-  const shuffled = () => shuffle(tracks)
+  // The compact bar shows the name only once the big title is mostly under
+  // it, so a short playlist never shows the name twice.
+  useEffect(() => {
+    const el = scrollRef?.current
+    if (!el) return
+    const on = () => {
+      if (!bar.current || !title.current) return
+      const t = title.current.getBoundingClientRect()
+      setScrolled(t.top + t.height / 2 <= bar.current.getBoundingClientRect().bottom)
+    }
+    on()
+    el.addEventListener('scroll', on, { passive: true })
+    return () => el.removeEventListener('scroll', on)
+  }, [scrollRef])
+
+  const source = { name: playlist.name, playlistId: playlist.id }
   // Shuffle doesn't bookmark: the next Resume should follow playlist order.
-  const inOrder = { playlistId: playlist.id }
+  const inOrder = { playlistId: playlist.id, source }
   const resumeIdx = playlist.resume ? tracks.findIndex((t) => t.id === playlist.resume.trackId) : -1
   const resumeTrack = resumeIdx >= 0 ? tracks[resumeIdx] : null
+  // No point offering to resume what is already playing.
+  const showResume = resumeTrack && !(isPlaying && current?.id === resumeTrack.id)
 
   return (
     <>
-      <header className="phead">
-        <button className="iconbtn phead__back" onClick={onBack} aria-label="Back"><ChevronLeft /></button>
-        <h1>{playlist.name}</h1>
-        <button className="iconbtn" onClick={onActions} aria-label="Playlist options"><Dots /></button>
-      </header>
+      <div ref={bar} className={`navbar ${scrolled ? 'navbar--scrolled' : ''}`}>
+        <button className="iconbtn" onClick={onBack} aria-label="Back"><Icon name="back" size={24} /></button>
+        <span className="navbar__title">{playlist.name}</span>
+        <button className="iconbtn" onClick={onActions} aria-label="Playlist options"><Icon name="more" size={22} /></button>
+      </div>
+
+      <div className="hero">
+        <Mosaic tracks={tracks} size={200} />
+        <h1 ref={title}>{playlist.name}</h1>
+        {tracks.length > 0 && <p className="hero__meta"><Meta tracks={tracks} /></p>}
+      </div>
 
       {tracks.length > 0 ? (
         <>
-          <p className="phead__meta dim">{summarize(tracks)}</p>
-          <div className="row-actions">
-            <button className="btn btn--accent playall" onClick={() => playQueue(tracks, 0, inOrder)}><PlayGlyph /> Play</button>
-            <button className="btn btn--ghost playall" onClick={() => playQueue(shuffled(), 0)}><ShuffleGlyph /> Shuffle</button>
+          <div className="btnrow">
+            <button className="btn" onClick={() => playQueue(tracks, 0, inOrder)}><Icon name="play" size={18} /> Play</button>
+            <button className="btn" onClick={() => playQueue(shuffle(tracks), 0, { source })}><Icon name="shuffle" size={20} /> Shuffle</button>
           </div>
-          {resumeTrack && (
+          {showResume && (
             <button
               className="resume"
               onClick={() => playQueue(tracks, resumeIdx, { ...inOrder, startAt: playlist.resume.position })}
             >
-              <PlayGlyph />
-              <span className="resume__meta">
-                <span className="resume__label">Resume</span>
-                <span className="resume__title">{resumeTrack.title}</span>
+              <Icon name="play" size={20} />
+              <span className="resume__text">
+                <span className="resume__label">Continue</span>
+                <span className="resume__title">{displayTitle(resumeTrack)}</span>
               </span>
-              <span className="resume__time">{formatTime(playlist.resume.position)}</span>
+              <span className="resume__time num">{formatTime(playlist.resume.position)}</span>
             </button>
           )}
           <div className="list">
@@ -242,13 +237,8 @@ function PlaylistDetail({ playlist, onBack, onActions }) {
           </div>
         </>
       ) : (
-        <p className="dim">Empty playlist. Add tracks from Library or Search using the ⋯ menu.</p>
+        <p className="hint">Empty for now. Press and hold any song in Library or Search to add it here.</p>
       )}
     </>
   )
 }
-
-function PlayGlyph() { return <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M8 5v14l11-7z" /></svg> }
-function ShuffleGlyph() { return <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 3h5v5M21 3l-7 7M4 20l16-16M16 21h5v-5M15 15l6 6M4 4l5 5" /></svg> }
-function ChevronLeft() { return <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M15 6l-6 6 6 6" /></svg> }
-function Dots() { return <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><circle cx="12" cy="5" r="1.8" /><circle cx="12" cy="12" r="1.8" /><circle cx="12" cy="19" r="1.8" /></svg> }

@@ -1,7 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 // Self-hosted variable font (bundled by Vite, precached for offline use).
-import '@fontsource-variable/bricolage-grotesque'
+import '@fontsource-variable/bricolage-grotesque/standard.css'
 import App from './App.jsx'
 import './index.css'
 import { seedIfEmpty, removeSamples } from './lib/seed'

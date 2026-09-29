@@ -36,7 +36,7 @@ const file = (name, hz) => ({ name, mimeType: 'audio/wav', buffer: wav(90, hz) }
 try {
   await page.goto('http://localhost:5193', { waitUntil: 'networkidle' })
   // Picked out of order, and 10 sorts after 2 only when compared as numbers.
-  await page.locator('input[type=file]').setInputFiles([
+  await page.locator('input[type=file][multiple]').setInputFiles([
     file('Morning Show - 010 Wrap Up.wav', 300),
     file('Morning Show - 002 Second.wav', 320),
     file('Morning Show - 001 Welcome.wav', 340),
@@ -45,10 +45,12 @@ try {
   await page.getByText('is ready, in order').waitFor({ timeout: 20000 })
   check('import reports the series playlist', true)
 
-  await page.getByRole('button', { name: 'Playlists' }).click()
+  await page.getByRole('button', { name: 'Playlists', exact: true }).click()
   await page.locator('.plcard', { hasText: 'Morning Show' }).click()
+  // Numbered tracks show their number as the artwork tile, the title without it.
   const titles = await page.locator('.row__title').allTextContents()
-  check('playlist is in episode order', titles.join(',') === '001 Welcome,002 Second,003 Third,010 Wrap Up', titles.join(','))
+  const tiles = await page.locator('.row .tile b').allTextContents()
+  check('playlist is in episode order', titles.join(',') === 'Welcome,Second,Third,Wrap Up' && tiles.join(',') === '001,002,003,010', `${tiles.join(',')} / ${titles.join(',')}`)
 
   // Play the second episode, move 40s in, pause.
   await page.locator('.row__main').nth(1).click()
@@ -59,34 +61,36 @@ try {
   await page.waitForTimeout(500)
 
   await page.reload({ waitUntil: 'networkidle' })
-  await page.getByRole('button', { name: 'Playlists' }).click()
+  await page.getByRole('button', { name: 'Playlists', exact: true }).click()
   await page.locator('.plcard', { hasText: 'Morning Show' }).click()
   const resume = page.locator('.resume')
   await resume.waitFor({ timeout: 5000 })
   const label = await resume.textContent()
-  check('Resume shows the right episode and time', label.includes('002 Second') && label.includes('0:40'), label)
+  check('Resume shows the right episode and time', label.includes('Second') && label.includes('0:40'), label)
 
   await resume.click()
   await page.waitForFunction(() => document.querySelector('audio')?.currentTime > 39, null, { timeout: 10000 }).catch(() => {})
   const t = await page.evaluate(() => document.querySelector('audio').currentTime)
   const title = await page.locator('.mini__title').textContent()
-  check('Resume plays that episode from that spot', title === '002 Second' && t >= 39, `${title} @ ${t.toFixed(1)}`)
+  check('Resume plays that episode from that spot', title === 'Second' && t >= 39, `${title} @ ${t.toFixed(1)}`)
 
   // Finishing an episode moves the bookmark to the next one.
   await page.evaluate(() => { const a = document.querySelector('audio'); a.currentTime = a.duration - 0.5 })
-  await page.waitForFunction(() => document.querySelector('.mini__title')?.textContent === '003 Third', null, { timeout: 10000 }).catch(() => {})
+  await page.waitForFunction(() => document.querySelector('.mini__title')?.textContent === 'Third', null, { timeout: 10000 }).catch(() => {})
   await page.waitForTimeout(800)
   await page.locator('.mini').getByLabel('Pause').click()
   await page.waitForTimeout(500)
   const next = await page.locator('.resume').textContent()
-  check('bookmark follows playback to the next episode', next.includes('003 Third'), next)
+  check('bookmark follows playback to the next episode', next.includes('Third'), next)
   await page.screenshot({ path: resolve(here, '../screenshots/14-series-resume.png') })
 
   // Re-importing the same files adds nothing and keeps one playlist.
-  await page.getByRole('button', { name: 'Library' }).click()
-  await page.locator('input[type=file]').setInputFiles([file('Morning Show - 001 Welcome.wav', 340)])
+  await page.getByRole('button', { name: 'Library', exact: true }).click()
+  await page.locator('input[type=file][multiple]').setInputFiles([file('Morning Show - 001 Welcome.wav', 340)])
   await page.waitForTimeout(1500)
-  await page.getByRole('button', { name: 'Playlists' }).click()
+  // The tab keeps its place (the open playlist); step back to the list.
+  await page.getByRole('button', { name: 'Playlists', exact: true }).click()
+  await page.getByLabel('Back').click()
   await page.locator('.plcard').first().waitFor({ timeout: 5000 })
   const cards = await page.locator('.plcard').allTextContents()
   check('no duplicate playlist on re-import', cards.filter((c) => c.includes('Morning Show')).length === 1, cards.join(' / '))

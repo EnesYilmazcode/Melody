@@ -1,130 +1,137 @@
 import { useState } from 'react'
 import { useTracks } from '../state/useLibrary'
-import { usePlayer } from '../state/PlayerProvider'
-import { shuffle } from '../lib/shuffle'
-import { summarize } from '../lib/format'
+import { useImporter } from '../lib/useImporter'
+import { useBackup } from '../lib/useBackup'
 import TrackRow from './TrackRow'
-import ImportButton from './ImportButton'
+import Sheet from './Sheet'
+import Icon from './Icon'
 
 const SORT_KEY = 'melody:librarySort'
+const FAV_KEY = 'melody:libraryFavorites'
 const SORTS = [
-  { value: 'recent', label: 'Recent' },
+  { value: 'recent', label: 'Recently added' },
   { value: 'plays', label: 'Most played' },
-  { value: 'alpha', label: 'A–Z' },
+  { value: 'alpha', label: 'Title' },
 ]
 
 // Reads must be try/catch-wrapped (private-mode Safari throws) and live in a
 // pure lazy initializer so StrictMode's double render stays side-effect free.
-function readSavedSort() {
+function readSaved(key, fallback) {
   try {
-    const v = localStorage.getItem(SORT_KEY)
-    return v === 'plays' || v === 'alpha' ? v : 'recent'
+    return localStorage.getItem(key) ?? fallback
   } catch {
-    return 'recent'
+    return fallback
+  }
+}
+function save(key, value) {
+  try {
+    localStorage.setItem(key, value)
+  } catch {
+    // Private-mode Safari: the choice still applies for this session.
   }
 }
 
 export default function LibraryView() {
   const tracks = useTracks()
-  const { playQueue } = usePlayer()
-  const [showStarred, setShowStarred] = useState(false)
-  const [sort, setSort] = useState(readSavedSort)
+  const importer = useImporter()
+  const backup = useBackup()
+  const [menu, setMenu] = useState(false)
+  const [sort, setSort] = useState(() => {
+    const v = readSaved(SORT_KEY, 'recent')
+    return SORTS.some((o) => o.value === v) ? v : 'recent'
+  })
+  const [favOnly, setFavOnly] = useState(() => readSaved(FAV_KEY, '0') === '1')
 
-  const pickSort = (value) => {
-    setSort(value)
-    try {
-      localStorage.setItem(SORT_KEY, value)
-    } catch {
-      // Private-mode Safari: the choice still applies for this session.
-    }
-  }
+  const pickSort = (value) => { setSort(value); save(SORT_KEY, value) }
+  const toggleFav = () => { setFavOnly((f) => { save(FAV_KEY, f ? '0' : '1'); return !f }) }
 
-  if (tracks === undefined) return <p className="dim">Loading…</p>
-
-  const filtered = showStarred ? tracks.filter((t) => t.starred) : tracks
+  const filtered = tracks && (favOnly ? tracks.filter((t) => t.starred) : tracks)
   // useTracks already returns dateAdded-desc, so 'recent' is the array as-is.
-  // The others must copy first — live-query arrays must never be sorted in place.
-  const shown =
-    sort === 'plays'
+  // The others must copy first: live-query arrays must never be sorted in place.
+  const shown = !filtered
+    ? []
+    : sort === 'plays'
       ? [...filtered].sort((a, b) => (b.playCount || 0) - (a.playCount || 0) || b.dateAdded - a.dateAdded)
       : sort === 'alpha'
-        ? [...filtered].sort((a, b) => (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' }))
+        ? [...filtered].sort((a, b) => (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base', numeric: true }))
         : filtered
+  const source = { name: favOnly ? 'Favorites' : 'Library' }
 
   return (
     <section className="view">
-      <div className="view__head">
-        <div className="view__titlerow">
-          <div>
-            <p className="eyebrow">Your music</p>
-            <h1>Library</h1>
-            {tracks.length > 0 && <p className="view__meta dim">{summarize(tracks)}</p>}
-          </div>
-          {/* An empty library shows its own, bigger Import in the empty state. */}
-          {tracks.length > 0 && <ImportButton />}
-        </div>
-        {tracks.length > 0 && (
-          <div className="segrow">
-            <div className="segmented">
-              <button className={!showStarred ? 'on' : ''} onClick={() => setShowStarred(false)}>All</button>
-              <button className={showStarred ? 'on' : ''} onClick={() => setShowStarred(true)}>Favorites</button>
-            </div>
-            {/* One tap cycles the sort; a second segmented row cost a fifth of the screen. */}
-            <button
-              className="sortbtn"
-              onClick={() => pickSort(SORTS[(SORTS.findIndex((o) => o.value === sort) + 1) % SORTS.length].value)}
-              aria-label={`Sort: ${SORTS.find((o) => o.value === sort).label}. Tap to change.`}
-            >
-              <SortGlyph /> {SORTS.find((o) => o.value === sort).label}
-            </button>
-          </div>
-        )}
+      <div className="topbar">
+        <button className="iconbtn" onClick={() => setMenu(true)} aria-label="Library options">
+          <Icon name="more" size={22} />
+        </button>
       </div>
+      {importer.progress && (
+        <p className="importing" role="status">
+          Importing <span className="num">{Math.min(importer.progress.done + 1, importer.progress.total)}</span> of <span className="num">{importer.progress.total}</span>
+          <span className="importing__bar"><i style={{ transform: `scaleX(${importer.progress.done / importer.progress.total})` }} /></span>
+        </p>
+      )}
 
-      {shown.length > 0 ? (
-        <>
-          <div className="row-actions">
-            <button className="btn btn--accent playall" onClick={() => playQueue(shown, 0)}>
-              <PlayGlyph /> Play
-            </button>
-            <button className="btn btn--ghost playall" onClick={() => playQueue(shuffle(shown), 0)}>
-              <ShuffleGlyph /> Shuffle
-            </button>
-          </div>
-          <div className="list">
-            {shown.map((t) => (
-              <TrackRow key={t.id} track={t} list={shown} />
-            ))}
-          </div>
-        </>
-      ) : showStarred ? (
-        <p className="dim">No favorites yet — tap the star on any track.</p>
+      {tracks === undefined ? null : shown.length > 0 ? (
+        <div className="list">
+          {shown.map((t) => (
+            <TrackRow key={t.id} track={t} list={shown} playOpts={{ source }} />
+          ))}
+        </div>
+      ) : favOnly && tracks.length > 0 ? (
+        <div className="emptystate">
+          <Icon name="starline" size={44} />
+          <h2>No favorites yet</h2>
+          <p>Tap the star in Now Playing to keep a song here.</p>
+          <button className="btn btn--ghost" onClick={toggleFav}>Show all songs</button>
+        </div>
       ) : (
         <div className="emptystate">
-          <NotesGlyph />
-          <p className="dim">Nothing here yet. Import songs from the Files app to build your library.</p>
-          <ImportButton />
+          <Icon name="note" size={44} />
+          <h2>Your library is empty</h2>
+          <p>Download songs in a-Shell, then import them from the Files app.</p>
+          <button className="btn btn--accent" onClick={importer.open}>Import from Files</button>
         </div>
+      )}
+
+      {importer.input}
+      {backup.input}
+
+      {menu && (
+        // Pickers and the share sheet need the tap's user activation, so each
+        // action runs first and the sheet animates away after.
+        <Sheet onClose={() => setMenu(false)} label="Library options">
+          {(close) => (
+            <>
+              <div className="sheet__grp">
+                <button className="sheet__row" onClick={() => { importer.open(); close() }}>
+                  <span>Import from Files</span><Icon name="import" size={20} />
+                </button>
+                <button className="sheet__row" onClick={() => { backup.exportFile(); close() }}>
+                  <span>Export backup</span><Icon name="export" size={20} />
+                </button>
+                <button className="sheet__row" onClick={() => { backup.restore(); close() }}>
+                  <span>Restore backup</span><Icon name="restore" size={20} />
+                </button>
+              </div>
+              <div className="sheet__grp">
+                {SORTS.map((o) => (
+                  <button key={o.value} className="sheet__row" onClick={() => pickSort(o.value)} aria-pressed={sort === o.value}>
+                    <span>{o.label}</span>
+                    {sort === o.value && <Icon name="check" size={20} className="check" />}
+                  </button>
+                ))}
+                <button className="sheet__row" onClick={toggleFav} aria-pressed={favOnly}>
+                  <span>Favorites only</span>
+                  {favOnly && <Icon name="check" size={20} className="check" />}
+                </button>
+              </div>
+              <div className="sheet__grp">
+                <button className="sheet__row sheet__row--c" onClick={() => close()}>Cancel</button>
+              </div>
+            </>
+          )}
+        </Sheet>
       )}
     </section>
   )
-}
-
-function PlayGlyph() {
-  return <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
-}
-function ShuffleGlyph() {
-  return <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 3h5v5M21 3l-7 7M4 20l16-16M16 21h5v-5M15 15l6 6M4 4l5 5" /></svg>
-}
-function NotesGlyph() {
-  return (
-    <svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--text-faint)' }} aria-hidden="true">
-      <path d="M9 18V6l10-2v12" />
-      <circle cx="6" cy="18" r="3" />
-      <circle cx="16" cy="16" r="3" />
-    </svg>
-  )
-}
-function SortGlyph() {
-  return <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 4v16M3 16l4 4 4-4M17 20V4M13 8l4-4 4 4" /></svg>
 }

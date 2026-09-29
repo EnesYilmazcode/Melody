@@ -3,18 +3,17 @@ import { useTracks, useSearch } from '../state/useLibrary'
 import { parseYouTube, buildYtDlpCommand } from '../lib/youtube'
 import TrackRow from './TrackRow'
 import YouTubeLinkCard from './YouTubeLinkCard'
+import Icon from './Icon'
 
-export default function SearchView() {
-  const [query, setQuery] = useState('')
+export default function SearchView({ query, setQuery }) {
   const [autoCopied, setAutoCopied] = useState(false)
   const tracks = useTracks()
   // Defer the query fed to the (synchronous) fuzzy search so fast typing over a
-  // large library doesn't drop input frames — React can skip intermediate list
-  // renders and catch up when idle.
+  // large library doesn't drop input frames.
   const deferredQuery = useDeferredValue(query)
   const results = useSearch(tracks, deferredQuery)
-  const q = query.trim() // immediate — drives the clear button
-  const dq = deferredQuery.trim() // matches `results`, so the list/hint stay consistent
+  const q = query.trim() // immediate: drives the clear button
+  const dq = deferredQuery.trim() // matches `results`, so the list stays consistent
   const yt = parseYouTube(query) // non-null when a YouTube link is pasted
 
   // One tap: read the link from the clipboard AND copy the a-Shell command back,
@@ -25,7 +24,7 @@ export default function SearchView() {
     try {
       text = await navigator.clipboard.readText()
     } catch {
-      return // clipboard read blocked — user can type instead
+      return // clipboard read blocked: the user can type instead
     }
     if (!text) return
     setQuery(text)
@@ -47,61 +46,51 @@ export default function SearchView() {
 
   return (
     <section className="view">
-      <div className="view__head">
-        <p className="eyebrow">Add music</p>
-        <h1>Search</h1>
-      </div>
-
-      <div className="searchbar">
-        <SearchIcon />
+      <div className="searchbar" style={{ marginTop: 14 }}>
+        <Icon name="search" size={18} />
         <input
           className="searchbar__input"
           type="search"
           inputMode="search"
-          placeholder="Paste a YouTube link, or search"
+          enterKeyHint="search"
+          placeholder="Songs or a YouTube link"
+          aria-label="Search"
           value={query}
           onChange={onType}
           autoCapitalize="none"
           autoCorrect="off"
+          spellCheck={false}
         />
-        {q ? (
-          <button className="searchbar__icon" onClick={() => { setQuery(''); setAutoCopied(false) }} aria-label="Clear">×</button>
-        ) : (
-          <button className="searchbar__icon" onClick={handlePaste} aria-label="Paste link"><PasteIcon /></button>
+        {q && (
+          <button className="searchbar__icon" onClick={() => { setQuery(''); setAutoCopied(false) }} aria-label="Clear"><Icon name="xfill" size={18} /></button>
         )}
       </div>
 
       {yt ? (
         <YouTubeLinkCard yt={yt} copied={autoCopied} />
-      ) : tracks === undefined ? (
-        <p className="dim">Loading…</p>
-      ) : dq && results.length > 0 ? (
+      ) : tracks === undefined ? null : dq && results.length > 0 ? (
         <div className="list">
           {results.map((t) => (
-            <TrackRow key={t.id} track={t} list={results} />
+            <TrackRow key={t.id} track={t} list={results} playOpts={{ source: { name: 'Search' } }} />
           ))}
         </div>
+      ) : dq ? (
+        <div className="noresults">
+          <Icon name="search" size={44} />
+          <h2>No results</h2>
+          <p>Check the spelling, or paste a YouTube link.</p>
+        </div>
       ) : (
-        <p className="dim searchhint">
-          {dq ? `Nothing matches “${dq}”.` : 'Tap the paste icon to drop in a YouTube link, or type to search your library.'}
-        </p>
+        <>
+          <div className="list">
+            <button className="row pasterow" onClick={handlePaste} aria-label="Paste link">
+              <span className="row__art"><Icon name="paste" size={22} /></span>
+              <span className="row__text"><span className="row__title">Paste a YouTube link</span></span>
+            </button>
+          </div>
+          <p className="searchnote">Or type to find a song in your library.</p>
+        </>
       )}
     </section>
-  )
-}
-
-function SearchIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-      <circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" />
-    </svg>
-  )
-}
-function PasteIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="8" y="3" width="8" height="4" rx="1" />
-      <path d="M9 5H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3" />
-    </svg>
   )
 }
