@@ -7,6 +7,9 @@ import './index.css'
 import { seedIfEmpty, removeSamples } from './lib/seed'
 import { requestPersistentStorage } from './lib/db'
 import { registerServiceWorker } from './lib/pwa'
+import { fitViewport } from './lib/viewport'
+
+fitViewport()
 
 // In dev we seed sample tones to develop against; in the real (prod) app there
 // are no samples — and we clean up any that were seeded by earlier builds.
