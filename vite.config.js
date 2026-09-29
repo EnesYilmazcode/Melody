@@ -99,8 +99,8 @@ export default defineConfig(({ command }) => ({
         name: 'Melody',
         short_name: 'Melody',
         description: 'Personal local audio player',
-        theme_color: '#110f0c',
-        background_color: '#110f0c',
+        theme_color: '#15120e',
+        background_color: '#15120e',
         display: 'standalone',
         orientation: 'portrait',
         // Relative scope/start so it works under the /melody/ subpath.
