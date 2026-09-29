@@ -1,164 +1,435 @@
-import { useState, useEffect, useRef } from 'react'
-import { usePlayer } from '../state/PlayerProvider'
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react'
+import { createPortal } from 'react-dom'
+import { usePlayer, SPEEDS } from '../state/PlayerProvider'
+import { useUI } from '../state/UIProvider'
 import { toggleStar } from '../lib/db'
 import { useLyrics, useTrack } from '../state/useLibrary'
 import { ensureLyrics, researchLyrics, activeLine } from '../lib/lyrics'
-import Artwork, { warmGlow } from './Artwork'
+import { ytThumbId } from '../lib/youtube'
+import { seriesTile, displayTitle } from '../lib/series'
+import { useDragDismiss } from '../lib/useDragDismiss'
+import { motionMs, EASE_SHEET } from '../lib/motion'
 import { formatTime } from '../lib/format'
+import Artwork from './Artwork'
+import Icon from './Icon'
+import Sheet from './Sheet'
 
 export default function Player() {
   const p = usePlayer()
-  const [expanded, setExpanded] = useState(false)
+  const [open, setOpen] = useState(false)
+  const mini = useRef(null)
+  useSwipeUp(mini, () => setOpen(true))
   if (!p.current) return null // nothing playing → no bar
 
   return (
     <>
-      {/* Mini bar — a button-like card, but a DIV so the inner play/next
-          <button>s aren't invalidly nested (which broke their taps on iOS). */}
+      {/* A DIV, not a button, so the inner play/next <button>s aren't
+          invalidly nested (which broke their taps on iOS). */}
       <div
         className="mini"
+        ref={mini}
         role="button"
         tabIndex={0}
-        onClick={() => setExpanded(true)}
+        aria-label="Open Now Playing"
+        onClick={() => setOpen(true)}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault()
-            setExpanded(true)
+            setOpen(true)
           }
         }}
       >
-        <Artwork track={p.current} size={40} />
-        <span className="mini__meta">
-          <span className="mini__title">{p.current.title}</span>
-          <span className="mini__artist">
-            {p.missing ? missingShort(p.current) : p.current.artist}
-          </span>
+        <Artwork track={p.current} size={42} />
+        <span className="mini__t">
+          <span className="mini__title">{displayTitle(p.current)}</span>
+          {p.missing && <span className="mini__sub">{missingShort(p.current)}</span>}
         </span>
-        <span className="mini__controls" onClick={(e) => e.stopPropagation()}>
+        <span onClick={(e) => e.stopPropagation()} style={{ display: 'flex' }}>
           <button className="iconbtn" onClick={p.toggle} aria-label={p.isPlaying ? 'Pause' : 'Play'} disabled={p.missing}>
-            {p.isPlaying ? <PauseIcon /> : <PlayIcon />}
+            <Icon name={p.isPlaying ? 'pause' : 'play'} size={24} />
           </button>
-          <button className="iconbtn" onClick={p.next} aria-label="Next"><NextIcon /></button>
+          <button className="iconbtn" onClick={p.next} aria-label="Next"><Icon name="next" size={26} /></button>
         </span>
-        <span className="mini__progress" style={{ width: `${(p.progress / (p.duration || 1)) * 100}%` }} />
+        <span className="mini__prog">
+          <i style={{ transform: `scaleX(${p.duration ? Math.min(1, p.progress / p.duration) : 0})` }} />
+        </span>
       </div>
 
-      {expanded && <NowPlaying p={p} onClose={() => setExpanded(false)} />}
+      {open && <NowPlaying p={p} onClosed={() => setOpen(false)} />}
     </>
   )
 }
 
-function NowPlaying({ p, onClose }) {
-  const loopLabel = { off: 'Repeat off', all: 'Repeat all', one: 'Repeat one' }[p.loopMode]
-  const [showLyrics, setShowLyrics] = useState(false)
+// Swipe up on the mini player opens Now Playing; a tap still works via click.
+function useSwipeUp(ref, onOpen) {
+  const cb = useRef(onOpen)
+  cb.current = onOpen
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    let start = null
+    const down = (e) => { start = { x: e.clientX, y: e.clientY } }
+    const move = (e) => {
+      if (!start) return
+      const dy = e.clientY - start.y
+      if (dy < -28 && Math.abs(dy) > Math.abs(e.clientX - start.x)) {
+        start = null
+        cb.current()
+      }
+    }
+    const up = () => { start = null }
+    el.addEventListener('pointerdown', down)
+    el.addEventListener('pointermove', move)
+    el.addEventListener('pointerup', up)
+    el.addEventListener('pointercancel', up)
+    return () => {
+      el.removeEventListener('pointerdown', down)
+      el.removeEventListener('pointermove', move)
+      el.removeEventListener('pointerup', up)
+      el.removeEventListener('pointercancel', up)
+    }
+  })
+}
+
+// Page-behind recede: 1 = Now Playing fully up. Drives .app via --np.
+function setBehind(v, animate) {
+  const root = document.documentElement
+  root.classList.toggle('np-anim', animate)
+  root.style.setProperty('--np', String(v))
+}
+
+function NowPlaying({ p, onClosed }) {
+  const sheet = useRef(null)
+  const closed = useRef(false)
+  const [lyricsOn, setLyricsOn] = useState(false)
+  const [menu, setMenu] = useState(false)
+  const { goToPlaylist, openAddToPlaylist } = useUI()
   const lyrics = useLyrics(p.current.id)
-  const live = useTrack(p.current.id) // live star state (snapshot can be stale)
+  const live = useTrack(p.current.id) // live star state (the queue snapshot can be stale)
   const starred = live ? live.starred : p.current.starred
+  const tile = seriesTile(p.current)
+
+  const slide = (to, ms) => {
+    const el = sheet.current
+    if (!el) return
+    el.style.transition = ms ? `transform ${ms}ms ${EASE_SHEET}` : 'none'
+    el.style.transform = to
+  }
+
+  useLayoutEffect(() => {
+    slide('translateY(100%)', 0)
+    sheet.current.getBoundingClientRect()
+    slide('', motionMs(420))
+    setBehind(1, true)
+    return () => setBehind(0, false)
+  }, [])
+
+  // Every close path animates down, then unmounts.
+  const close = useCallback((then) => {
+    if (closed.current) return
+    closed.current = true
+    const ms = motionMs(340)
+    slide('translateY(100%)', ms)
+    setBehind(0, true)
+    setTimeout(() => {
+      document.documentElement.classList.remove('np-anim')
+      onClosed()
+      if (typeof then === 'function') then()
+    }, ms)
+  }, [onClosed])
+
+  useDragDismiss(sheet, {
+    exclude: 'button, input, .scrub, [data-nodrag]',
+    onDrag: (d) => {
+      slide(`translateY(${d}px)`, 0)
+      setBehind(Math.max(0, 1 - d / (sheet.current.offsetHeight || 800)), false)
+    },
+    onEnd: (d, v) => {
+      if (d > 140 || v > 0.55) close()
+      else {
+        slide('', motionMs(380))
+        setBehind(1, true)
+      }
+    },
+  })
+
+  // Escape closes (hardware keyboards), unless a sheet on top takes it.
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape' && !menu && !document.querySelector('.sheet')) close()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [menu, close])
 
   // Fetch + cache lyrics when the track changes (no-op if already cached).
   useEffect(() => {
     ensureLyrics(p.current).catch(() => {})
   }, [p.current.id])
 
-  const pct = p.duration ? (p.progress / p.duration) * 100 : 0
+  const sourceName = p.source?.name || 'Library'
+  const loopIcon = p.loopMode === 'one' ? 'repeat1' : 'repeat'
+  const loopLabel = { off: 'Repeat off', all: 'Repeat all', one: 'Repeat one' }[p.loopMode]
 
-  return (
-    <div className="now" style={{ '--np-glow': warmGlow(p.current.id) }}>
-      <div className="now__bar">
-        <button className="iconbtn" onClick={onClose} aria-label="Minimize"><ChevronDown /></button>
-        <span className="now__eyebrow">Now Playing</span>
-        <button
-          className={`iconbtn ${showLyrics ? 'iconbtn--on' : ''}`}
-          onClick={() => setShowLyrics((s) => !s)}
-          aria-label="Lyrics"
-        >
-          <LyricsIcon />
-        </button>
-      </div>
+  return createPortal(
+    <div
+      className="now"
+      ref={sheet}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Now Playing"
+      tabIndex={-1}
+    >
+      <Backdrop track={p.current} tile={tile} />
+      <div className="grab" aria-hidden="true" />
+      <div className="source">Playing from <b>{sourceName}</b></div>
 
-      {showLyrics ? (
+      {lyricsOn ? (
         <LyricsView lyrics={lyrics} progress={p.progress} onSeek={p.seek} onResearch={() => researchLyrics(p.current)} />
       ) : (
-        <div className="now__art"><Artwork track={p.current} size={280} radius={22} /></div>
+        <div className="now__art">
+          <Cover track={p.current} tile={tile} paused={!p.isPlaying && !p.missing} />
+        </div>
       )}
 
-      <div className="now__info">
-        <div className="now__text">
-          <h2>{p.current.title}</h2>
-          <p>{p.current.artist}</p>
+      <div className="titlerow">
+        <div className="titlerow__t">
+          <Title text={displayTitle(p.current)} />
         </div>
         <button
-          className={`iconbtn ${starred ? 'iconbtn--star-on' : ''}`}
+          className={`glass ${starred ? 'glass--on' : ''}`}
           onClick={() => toggleStar(p.current.id).catch(() => {})}
-          aria-label="Favorite"
+          aria-label={starred ? 'Unfavorite' : 'Favorite'}
+          aria-pressed={!!starred}
         >
-          <StarIcon filled={!!starred} />
+          <i><Icon name={starred ? 'star' : 'starline'} size={16} /></i>
+        </button>
+        <button className="glass" onClick={() => setMenu(true)} aria-label="More">
+          <i><Icon name="more" size={18} /></i>
         </button>
       </div>
 
       {p.missing ? (
-        <p className="now__missing" role="status">{missingLong(p.current)}</p>
+        <p className="np-missing" role="status">{missingLong(p.current)}</p>
       ) : (
-        <div className="scrub">
-          <input
-            type="range"
-            min="0"
-            max={p.duration || 0}
-            step="0.1"
-            value={p.progress}
-            onChange={(e) => p.seek(Number(e.target.value))}
-            style={{ background: `linear-gradient(to right, var(--accent) ${pct}%, var(--surface-2) ${pct}%)` }}
-          />
-          <div className="scrub__times">
-            <span>{formatTime(p.progress)}</span>
-            <span>{formatTime(p.duration)}</span>
-          </div>
-        </div>
+        <Scrubber progress={p.progress} duration={p.duration} onSeek={p.seek} />
       )}
 
-      <div className="transport">
-        {p.longForm ? (
-          <button className="iconbtn skipbtn" onClick={() => p.skip(-15)} aria-label="Back 15 seconds"><SkipIcon back n={15} /></button>
-        ) : (
-          <button className="iconbtn" onClick={p.prev} aria-label="Previous"><PrevIcon /></button>
+      <div className={`transport ${p.longForm ? 'transport--long' : ''}`}>
+        {p.longForm && (
+          <button className="tp tp--sm" onClick={() => p.skip(-15)} aria-label="Back 15 seconds"><Icon name="back15" size={30} /></button>
         )}
-        <button className="playbtn" onClick={p.toggle} aria-label={p.isPlaying ? 'Pause' : 'Play'} disabled={p.missing}>
-          {p.isPlaying ? <PauseIcon big /> : <PlayIcon big />}
+        <button className="tp" onClick={p.prev} aria-label="Previous"><Icon name="prev" size={36} /></button>
+        <button className="tp" onClick={p.toggle} aria-label={p.isPlaying ? 'Pause' : 'Play'} disabled={p.missing}>
+          <Icon name={p.isPlaying ? 'pause' : 'play'} size={48} />
         </button>
-        {p.longForm ? (
-          <button className="iconbtn skipbtn" onClick={() => p.skip(30)} aria-label="Forward 30 seconds"><SkipIcon n={30} /></button>
-        ) : (
-          <button className="iconbtn" onClick={p.next} aria-label="Next"><NextIcon /></button>
+        <button className="tp" onClick={p.next} aria-label="Next"><Icon name="next" size={36} /></button>
+        {p.longForm && (
+          <button className="tp tp--sm" onClick={() => p.skip(30)} aria-label="Forward 30 seconds"><Icon name="fwd30" size={30} /></button>
         )}
       </div>
 
-      <div className="now__pills">
-        <button
-          className={`loopbtn loopbtn--${p.loopMode}`}
-          onClick={p.cycleLoop}
-          aria-label={loopLabel}
-        >
-          <RepeatIcon /> <span>{loopLabel}</span>
-          {p.loopMode === 'one' && <em className="loopbtn__one">1</em>}
+      <div className="foot">
+        <button className={`ft ${lyricsOn ? 'ft--on' : ''}`} onClick={() => setLyricsOn((s) => !s)} aria-label="Lyrics" aria-pressed={lyricsOn}>
+          <Icon name="lyrics" size={22} />
         </button>
-        <button className={`loopbtn speedbtn${p.speed !== 1 ? ' speedbtn--on' : ''}`} onClick={p.cycleSpeed} aria-label={`Playback speed ${p.speed}x`}>
-          <span>{p.speed}×</span>
+        <button className={`ft ${p.loopMode !== 'off' ? 'ft--on' : ''}`} onClick={p.cycleLoop} aria-label={loopLabel}>
+          <Icon name={loopIcon} size={22} />
         </button>
+      </div>
+
+      {menu && (
+        <Sheet onClose={() => setMenu(false)} label="Track options">
+          {(closeMenu) => (
+            <>
+              <div className="sheet__grp">
+                <button className="sheet__row" onClick={() => closeMenu(() => openAddToPlaylist(live || p.current))}>
+                  <span>Add to playlist</span><Icon name="plus" size={20} />
+                </button>
+                {p.source?.playlistId != null && (
+                  <button className="sheet__row" onClick={() => closeMenu(() => close(() => goToPlaylist(p.source.playlistId)))}>
+                    <span>Go to {p.source.name}</span><Icon name="tab_playlists" size={20} />
+                  </button>
+                )}
+                {/* Speed: no label, the values say what it is. Persists and applies to every track. */}
+                <div className="seg" role="radiogroup" aria-label="Playback speed">
+                  <div className="seg__track">
+                    {SPEEDS.map((v) => (
+                      <button
+                        key={v}
+                        role="radio"
+                        aria-checked={p.speed === v}
+                        aria-label={`${v}x speed`}
+                        className={p.speed === v ? 'on' : ''}
+                        onClick={() => p.pickSpeed(v)}
+                      >
+                        {v}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div className="sheet__grp">
+                <button className="sheet__row sheet__row--c" onClick={() => closeMenu()}>Cancel</button>
+              </div>
+            </>
+          )}
+        </Sheet>
+      )}
+    </div>,
+    document.body,
+  )
+}
+
+// YouTube art is 16:9: fit it whole over a blurred, zoomed copy of itself.
+function ytChain(url) {
+  const id = ytThumbId(url)
+  if (!id) return url ? [url] : []
+  const base = `https://i.ytimg.com/vi/${id}`
+  return [`${base}/maxresdefault.jpg`, `${base}/mqdefault.jpg`, `${base}/hqdefault.jpg`]
+}
+
+function useChain(url) {
+  const chain = ytChain(url)
+  const [step, setStep] = useState(0)
+  useEffect(() => setStep(0), [url])
+  return {
+    src: chain[step],
+    onError: () => setStep((n) => n + 1),
+    // A missing maxres answers with a 120px grey placeholder, not an error.
+    onLoad: (e) => { if (chain[step]?.includes('maxresdefault') && e.currentTarget.naturalWidth <= 120) setStep((n) => n + 1) },
+  }
+}
+
+function Cover({ track, tile, paused }) {
+  const img = useChain(track.thumbnailUrl)
+  const cls = `cover ${paused ? 'cover--paused' : ''}`
+  if (img.src) {
+    return (
+      <div className={cls}>
+        <img className="fill" src={img.src} alt="" aria-hidden="true" />
+        <img className="fit" src={img.src} alt="" onError={img.onError} onLoad={img.onLoad} />
+      </div>
+    )
+  }
+  if (tile) {
+    return (
+      <div className={`${cls} cover--series`} style={{ '--h': tile.hue }}>
+        <div className="big">{tile.num}</div>
+        <div className="cap">{tile.label}</div>
+      </div>
+    )
+  }
+  return <div className={cls}><Artwork track={track} size={342} radius={0} /></div>
+}
+
+function Backdrop({ track, tile }) {
+  const img = useChain(track.thumbnailUrl)
+  let h = tile?.hue
+  if (h == null) {
+    let x = 0
+    for (const c of track.id || '') x = (x * 31 + c.charCodeAt(0)) % 360
+    h = 16 + (x % 30)
+  }
+  return (
+    <div className="now__bg" aria-hidden="true">
+      {img.src ? <img src={img.src} alt="" onError={img.onError} /> : <div className="blob" style={{ '--h': h }} />}
+    </div>
+  )
+}
+
+// One line; a title too long for it scrolls once in a while instead of
+// losing its end to an ellipsis.
+function Title({ text }) {
+  const box = useRef(null)
+  const inner = useRef(null)
+  const [over, setOver] = useState(0)
+  useLayoutEffect(() => {
+    const measure = () => setOver(Math.max(0, inner.current.scrollWidth - box.current.clientWidth))
+    measure()
+    document.fonts?.ready.then(measure)
+  }, [text])
+  const reduce = motionMs(1000) < 1000
+  const cls = over > 0 ? (reduce ? 'np-title np-title--clip' : 'np-title np-title--marquee np-title--clip') : 'np-title'
+  return (
+    <div className={cls} ref={box} style={over ? { '--mq': `${-(over + 24)}px`, '--mq-dur': `${Math.max(8, over / 18)}s` } : undefined}>
+      <span ref={inner}>{text}</span>
+    </div>
+  )
+}
+
+// Custom scrubber: no thumb; it thickens while held and seeks on release.
+function Scrubber({ progress, duration, onSeek }) {
+  const track = useRef(null)
+  const [drag, setDrag] = useState(null) // seconds while dragging
+  const ratioAt = (x) => {
+    const r = track.current.getBoundingClientRect()
+    return Math.min(1, Math.max(0, (x - r.left) / r.width))
+  }
+  const t = drag ?? progress
+  const pct = duration ? Math.min(1, t / duration) : 0
+
+  const down = (e) => {
+    if (!duration) return
+    e.currentTarget.setPointerCapture(e.pointerId)
+    setDrag(ratioAt(e.clientX) * duration)
+  }
+  const move = (e) => { if (drag != null) setDrag(ratioAt(e.clientX) * duration) }
+  const up = () => {
+    if (drag == null) return
+    onSeek(drag)
+    setDrag(null)
+  }
+  const key = (e) => {
+    const step = { ArrowLeft: -5, ArrowRight: 5 }[e.key]
+    if (step && duration) {
+      e.preventDefault()
+      onSeek(Math.min(duration, Math.max(0, progress + step)))
+    }
+  }
+
+  return (
+    <div
+      className={`scrub ${drag != null ? 'scrub--active' : ''}`}
+      role="slider"
+      tabIndex={0}
+      aria-label="Position"
+      aria-valuemin={0}
+      aria-valuemax={Math.round(duration || 0)}
+      aria-valuenow={Math.round(t)}
+      aria-valuetext={formatTime(t)}
+      onPointerDown={down}
+      onPointerMove={move}
+      onPointerUp={up}
+      onPointerCancel={() => setDrag(null)}
+      onKeyDown={key}
+    >
+      <div className="scrub__track" ref={track}><i style={{ transform: `scaleX(${pct})` }} /></div>
+      <div className="scrub__times">
+        <span className="num">{formatTime(t)}</span>
+        <span className="num">-{formatTime(Math.max(0, (duration || 0) - t))}</span>
       </div>
     </div>
   )
 }
 
 function LyricsView({ lyrics, progress, onSeek, onResearch }) {
+  const box = useRef(null)
   const activeRef = useRef(null)
+  const touchedAt = useRef(0)
   const [researching, setResearching] = useState(false)
   const synced = lyrics?.synced
   const idx = activeLine(synced, progress)
 
-  // Keep the active line centered as the song plays.
+  // Keep the active line centered, unless the reader scrolled in the last few
+  // seconds. Scrolls only this box (scrollIntoView would also move the sheet).
   useEffect(() => {
-    activeRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    const el = activeRef.current
+    const sc = box.current
+    if (!el || !sc || Date.now() - touchedAt.current < 3000) return
+    sc.scrollTo({ top: el.offsetTop - sc.clientHeight / 2 + el.offsetHeight / 2, behavior: motionMs(1) > 1 ? 'smooth' : 'auto' })
   }, [idx])
+  const touched = () => { touchedAt.current = Date.now() }
 
   const research = async () => {
     setResearching(true)
@@ -167,14 +438,14 @@ function LyricsView({ lyrics, progress, onSeek, onResearch }) {
   // "Wrong song?" footer so a bad match is one tap to fix.
   const footer = lyrics !== undefined && (
     <button className="lyrics__research" onClick={research} disabled={researching}>
-      {researching ? 'Searching…' : 'Wrong lyrics? Re-search'}
+      {researching ? 'Searching…' : 'Wrong lyrics? Search again'}
     </button>
   )
 
   if (lyrics === undefined) return <div className="lyrics lyrics--msg">Loading lyrics…</div>
   if (synced && synced.length) {
     return (
-      <div className="lyrics">
+      <div className="lyrics" data-scroll ref={box} onTouchStart={touched} onWheel={touched} style={{ position: 'relative' }}>
         {synced.map((line, i) => (
           <p
             key={i}
@@ -190,7 +461,7 @@ function LyricsView({ lyrics, progress, onSeek, onResearch }) {
     )
   }
   if (lyrics?.plain) {
-    return <div className="lyrics lyrics--plain">{lyrics.plain}{footer}</div>
+    return <div className="lyrics lyrics--plain" data-scroll>{lyrics.plain}{footer}</div>
   }
   return (
     <div className="lyrics lyrics--msg">
@@ -202,32 +473,10 @@ function LyricsView({ lyrics, progress, onSeek, onResearch }) {
 
 // An episode that fails to load is usually just offline, not missing bytes.
 function missingShort(item) {
-  return item.kind === 'episode' ? "Can't stream right now" : 'Audio unavailable — re-import'
+  return item.kind === 'episode' ? "Can't stream right now" : 'Audio missing. Import it again'
 }
 function missingLong(item) {
   return item.kind === 'episode'
     ? "Can't stream this episode right now. Download it while you have a connection to play it offline."
-    : 'Audio unavailable — the file for this track is missing. Re-import it to play.'
-}
-
-/* icons */
-const s = { fill: 'currentColor' }
-function LyricsIcon() { return <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 6h11M4 12h9M4 18h7" /><path d="M16 17V9l4-1.5V15" /><circle cx="14.5" cy="17" r="1.6" fill="currentColor" stroke="none" /><circle cx="18.5" cy="15" r="1.6" fill="currentColor" stroke="none" /></svg> }
-function PlayIcon({ big }) { const n = big ? 30 : 20; return <svg viewBox="0 0 24 24" width={n} height={n} {...s}><path d="M8 5v14l11-7z" /></svg> }
-function PauseIcon({ big }) { const n = big ? 30 : 20; return <svg viewBox="0 0 24 24" width={n} height={n} {...s}><path d="M7 5h4v14H7zM13 5h4v14h-4z" /></svg> }
-function NextIcon() { return <svg viewBox="0 0 24 24" width="22" height="22" {...s}><path d="M6 5v14l9-7zM16 5h3v14h-3z" /></svg> }
-function PrevIcon() { return <svg viewBox="0 0 24 24" width="22" height="22" {...s}><path d="M18 5v14l-9-7zM5 5h3v14H5z" /></svg> }
-function RepeatIcon() { return <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 2l4 4-4 4" /><path d="M3 11V9a4 4 0 0 1 4-4h14" /><path d="M7 22l-4-4 4-4" /><path d="M21 13v2a4 4 0 0 1-4 4H3" /></svg> }
-function ChevronDown() { return <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg> }
-function StarIcon({ filled }) { return <svg viewBox="0 0 24 24" width="24" height="24" fill={filled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinejoin="round"><path d="M12 3.5l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8L6.6 20l1-6L3.3 9.9l6-.9z" /></svg> }
-function SkipIcon({ back, n }) {
-  return (
-    <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <g transform={back ? undefined : 'translate(24 0) scale(-1 1)'}>
-        <path d="M4 12a8 8 0 1 0 2.3-5.7" />
-        <path d="M4 3v4h4" />
-      </g>
-      <text x="12" y="15.6" textAnchor="middle" fontSize="7.5" fontWeight="700" fill="currentColor" stroke="none">{n}</text>
-    </svg>
-  )
+    : 'The audio file for this track is missing. Import it again from Files to play it.'
 }

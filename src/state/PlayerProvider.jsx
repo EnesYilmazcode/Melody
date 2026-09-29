@@ -2,6 +2,8 @@ import { createContext, useContext, useEffect, useRef, useState, useCallback } f
 import { bumpPlayCount, getAudioBlob, getPosition, savePosition, setPlayed, savePlaylistResume } from '../lib/db'
 import { isLongForm } from '../lib/podcasts'
 import { ytThumbId } from '../lib/youtube'
+import { seriesTile, displayTitle } from '../lib/series'
+import { tileArtwork } from '../lib/tileArt'
 
 const PlayerContext = createContext(null)
 export const usePlayer = () => useContext(PlayerContext)
@@ -10,8 +12,8 @@ export const usePlayer = () => useContext(PlayerContext)
 //   off → all (loop the whole queue/playlist) → one (loop this song) → off
 export const LOOP_MODES = ['off', 'all', 'one']
 
-// Playback speeds, cycled by the speed pill. Applies to everything.
-export const SPEEDS = [1, 1.25, 1.5, 1.75, 2, 0.75]
+// Playback speeds offered in Now Playing's menu. Applies to everything.
+export const SPEEDS = [0.75, 1, 1.25, 1.5, 2]
 const SKIP_BACK = 15
 const SKIP_FORWARD = 30
 
@@ -55,6 +57,8 @@ export function PlayerProvider({ children }) {
   // null (which flashed the Now Playing screen closed).
   const [playToken, setPlayToken] = useState(0)
   const [speed, setSpeed] = useState(loadSpeed)
+  // Where the queue came from, for "Playing from …": { name, playlistId }.
+  const [source, setSource] = useState(null)
   const speedRef = useRef(speed)
   speedRef.current = speed
 
@@ -74,9 +78,11 @@ export function PlayerProvider({ children }) {
   // ── Core: load + play a queue starting at a given index ──
   // opts.playlistId: remember progress on that playlist as it plays.
   // opts.startAt: begin the first track at this position (seconds).
+  // opts.source: { name, playlistId } shown as "Playing from <name>".
   const playQueue = useCallback((tracks, startIndex = 0, opts = {}) => {
     if (!tracks.length) return
     sourceRef.current = opts.playlistId ?? null
+    setSource(opts.source ?? null)
     startAtRef.current = opts.startAt ?? null
     setQueue(tracks)
     setIndex(startIndex)
@@ -263,8 +269,8 @@ export function PlayerProvider({ children }) {
     a.currentTime = Math.max(0, a.duration ? Math.min(a.duration, t) : t)
   }, [])
 
-  const cycleSpeed = useCallback(() => {
-    setSpeed((v) => SPEEDS[(SPEEDS.indexOf(v) + 1) % SPEEDS.length])
+  const pickSpeed = useCallback((v) => {
+    if (SPEEDS.includes(v)) setSpeed(v)
   }, [])
 
   // Write the listening position for long-form items. Skipped in the last
@@ -356,19 +362,25 @@ export function PlayerProvider({ children }) {
       return
     }
 
+    // The lock screen crops to a square too, so skip the letterboxed
+    // hqdefault; a numbered track without art gets its number tile drawn.
+    const yt = ytThumbId(current.thumbnailUrl)
+    const tile = seriesTile(current)
+    const artwork = yt
+      ? [
+          { src: `https://i.ytimg.com/vi/${yt}/maxresdefault.jpg`, sizes: '1280x720', type: 'image/jpeg' },
+          { src: `https://i.ytimg.com/vi/${yt}/mqdefault.jpg`, sizes: '320x180', type: 'image/jpeg' },
+        ]
+      : current.thumbnailUrl
+        ? [{ src: current.thumbnailUrl, sizes: 'any', type: 'image/jpeg' }]
+        : tile
+          ? [{ src: tileArtwork(tile), sizes: '512x512', type: 'image/png' }]
+          : []
     ms.metadata = new window.MediaMetadata({
-      title: current.title || 'Unknown',
-      artist: current.artist || '',
-      // The lock screen crops to a square too, so skip the letterboxed hqdefault.
-      artwork: current.thumbnailUrl
-        ? [{
-            src: ytThumbId(current.thumbnailUrl)
-              ? `https://i.ytimg.com/vi/${ytThumbId(current.thumbnailUrl)}/mqdefault.jpg`
-              : current.thumbnailUrl,
-            sizes: 'any',
-            type: 'image/jpeg',
-          }]
-        : [],
+      title: displayTitle(current) || 'Unknown',
+      artist: '',
+      album: source?.name || '',
+      artwork,
     })
 
     const set = (action, handler) => {
@@ -393,7 +405,7 @@ export function PlayerProvider({ children }) {
     // Clear handlers when the track changes or the provider unmounts, so no
     // remote press ever fires a closure bound to the previous track.
     return clearAll
-  }, [current, longForm, play, pause, prev, next, seek, skip])
+  }, [current, source, longForm, play, pause, prev, next, seek, skip])
 
   // Single source of truth for playbackState: 'none' when nothing is loaded,
   // else mirror isPlaying. iOS uses this to decide whether a remote press maps
@@ -406,8 +418,8 @@ export function PlayerProvider({ children }) {
   }, [isPlaying, current])
 
   const value = {
-    current, queue, index, isPlaying, loopMode, progress, duration, missing, longForm, speed,
-    playTrack, playQueue, playNext, addToQueue, toggle, next, prev, seek, cycleLoop, skip, cycleSpeed,
+    current, queue, index, isPlaying, loopMode, progress, duration, missing, longForm, speed, source,
+    playTrack, playQueue, playNext, addToQueue, toggle, next, prev, seek, cycleLoop, skip, pickSpeed,
   }
 
   return (
