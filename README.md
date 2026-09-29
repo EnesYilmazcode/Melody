@@ -93,7 +93,7 @@ Then, for each song:
 1. In the YouTube app: **Share → Copy Link**.
 2. In Melody → **Search** → tap the **paste** icon. It detects the link and **copies a download command** to your clipboard.
 3. Switch to **a-Shell**, paste, and run. It downloads the `.m4a`.
-4. Back in Melody → **Library → Import** → pick the file from **On My iPhone → a-Shell**.
+4. Back in Melody → **Library → ⋯ → Import from Files** → pick the file from **On My iPhone → a-Shell**.
 
 That's it: the song is now in your library with cover art and lyrics, playable offline forever.
 
@@ -104,8 +104,8 @@ That's it: the song is now in your library with cover art and lyrics, playable o
 - **The app updates itself.** Every time you open it, a foreground service-worker check looks for a new build (and again every hour while it stays open) and applies it in place. You never need to reinstall anything.
 - **Never delete the home-screen icon.** On iOS the app's storage belongs to that icon, so removing it can wipe your whole library along with it. There is nothing a reinstall fixes that reopening does not.
 - **Safe force-refresh:** swipe the app away in the app switcher and reopen it.
-- **Backup:** on the Playlists tab, tap **Export backup** to save a JSON file of your catalog and playlists (titles, stars, play counts, playlist contents). Audio bytes are not included, so the file stays tiny.
-- **Restore:** on the Playlists tab, tap **Restore** and pick that JSON, then re-import the same audio files from Files. The bytes reattach to the same tracks, so your playlists and stars come back intact.
+- **Backup:** in Library, tap **⋯ → Export backup** to save a JSON file of your catalog and playlists (titles, stars, play counts, playlist contents). Audio bytes are not included, so the file stays tiny.
+- **Restore:** in Library, tap **⋯ → Restore backup** and pick that JSON, then re-import the same audio files from Files. The bytes reattach to the same tracks, so your playlists and stars come back intact.
 
 ## Known iOS limitations (by design)
 
