@@ -1,65 +1,52 @@
 import Artwork from './Artwork'
-import { formatTime, timeLeft } from '../lib/format'
-import { isLongForm } from '../lib/podcasts'
-import { toggleStar } from '../lib/db'
+import Icon from './Icon'
+import { formatTime } from '../lib/format'
+import { displayTitle } from '../lib/series'
+import { useLongPress } from '../lib/useLongPress'
 import { usePlayer } from '../state/PlayerProvider'
 import { useUI } from '../state/UIProvider'
 
-// A single tappable track. Tap the row → play (within `list` as the queue).
-// Star button toggles favorite; the ⋯ button opens the add-to-playlist sheet.
-export default function TrackRow({ track, list, playOpts, playlist }) {
+// A single track: tap plays it (within `list` as the queue), press and hold
+// opens the track sheet (playlists, favorite, delete). Title only; the
+// trailing edge carries a favorite star and the duration, or the eq bars on
+// the playing row.
+export default function TrackRow({ track, list, playOpts, playlist, sub }) {
   const { current, isPlaying, playTrack } = usePlayer()
   const { openAddToPlaylist } = useUI()
+  const lp = useLongPress(() => openAddToPlaylist(track, playlist))
   const isCurrent = current?.id === track.id
 
   return (
-    <div className={`row ${isCurrent ? 'row--active' : ''}`}>
-      <button className="row__main" onClick={() => playTrack(track, list, playOpts)}>
-        <Artwork track={track} />
-        <span className="row__meta">
-          <span className="row__title">{track.title}</span>
-          <span className="row__artist">{track.artist}</span>
-        </span>
-        {isCurrent && isPlaying && <EqBars />}
-      </button>
-
-      <span className="row__dur">
-        {isLongForm(track) && track.position > 0 ? timeLeft(track.duration, track.position) : formatTime(track.duration)}
+    <button
+      className={`row row__main ${isCurrent ? 'row--playing' : ''}`}
+      {...lp.handlers}
+      onClick={() => {
+        if (!lp.suppressClick()) playTrack(track, list, playOpts)
+      }}
+    >
+      <Artwork track={track} />
+      <span className="row__text">
+        <span className="row__title">{displayTitle(track)}</span>
+        {sub && <span className="row__sub">{sub}</span>}
       </span>
-
-      <button
-        className={`iconbtn ${track.starred ? 'iconbtn--star-on' : ''}`}
-        onClick={() => toggleStar(track.id).catch(() => {})}
-        aria-label={track.starred ? 'Unfavorite' : 'Favorite'}
-      >
-        <StarIcon filled={!!track.starred} />
-      </button>
-
-      <button className="iconbtn" onClick={() => openAddToPlaylist(track, playlist)} aria-label="Add to playlist">
-        <DotsIcon />
-      </button>
-    </div>
+      <span className="row__end">
+        {isCurrent ? (
+          <EqBars paused={!isPlaying} />
+        ) : (
+          <>
+            {!!track.starred && <Icon name="star" size={12} className="star" />}
+            <span className="num">{formatTime(track.duration)}</span>
+          </>
+        )}
+      </span>
+    </button>
   )
 }
 
-function EqBars() {
+export function EqBars({ paused }) {
   return (
-    <span className="eq" aria-hidden="true">
-      <i /><i /><i />
+    <span className={`eq ${paused ? 'eq--paused' : ''}`} aria-label={paused ? 'Paused' : 'Now playing'}>
+      <i /><i /><i /><i />
     </span>
-  )
-}
-function StarIcon({ filled }) {
-  return (
-    <svg viewBox="0 0 24 24" width="20" height="20" fill={filled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
-      <path d="M12 3.5l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8L6.6 20l1-6L3.3 9.9l6-.9z" />
-    </svg>
-  )
-}
-function DotsIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-      <circle cx="12" cy="5" r="1.8" /><circle cx="12" cy="12" r="1.8" /><circle cx="12" cy="19" r="1.8" />
-    </svg>
   )
 }

@@ -1,16 +1,17 @@
 import { useRef, useState } from 'react'
-import { addLocalTrack, requestPersistentStorage, storageEstimate, seriesNumber, upsertSeriesPlaylist } from '../lib/db'
+import { addLocalTrack, requestPersistentStorage, storageEstimate, seriesNumber, upsertSeriesPlaylist } from './db'
 import { useUI } from '../state/UIProvider'
-import { readDuration, parseFilename } from '../lib/audio'
-import { ensureLyrics } from '../lib/lyrics'
-import { fetchYouTubePreview } from '../lib/youtube'
+import { readDuration, parseFilename } from './audio'
+import { ensureLyrics } from './lyrics'
+import { fetchYouTubePreview } from './youtube'
 
 // Imports audio files from the Files app via a native file picker (the only way
-// to read user files on iOS — no File System Access API). Each file's bytes are
+// to read user files on iOS: no File System Access API). Each file's bytes are
 // stored in IndexedDB and added to the library; useLiveQuery refreshes the list.
-export default function ImportButton() {
+// Returns the hidden <input> to render, open() to show the picker, and progress.
+export function useImporter() {
   const inputRef = useRef(null)
-  const [remaining, setRemaining] = useState(0)
+  const [progress, setProgress] = useState(null) // { done, total } while importing
   const { showToast } = useUI() // results surface in the app-wide toast
 
   const onPick = async (e) => {
@@ -22,8 +23,8 @@ export default function ImportButton() {
     if (!picked.length) return
 
     // Select-All in the a-Shell folder sweeps in .json/.txt sidecars alongside
-    // the audio — the accept attr is advisory only on iOS, so filter here,
-    // before the quota pre-flight and the remaining counter see the list.
+    // the audio. The accept attr is advisory only on iOS, so filter here,
+    // before the quota pre-flight and the progress counter see the list.
     const files = picked.filter(
       (f) => f.type.startsWith('audio/') || /\.(m4a|mp3|aac|wav|flac|ogg)$/i.test(f.name)
     )
@@ -40,17 +41,20 @@ export default function ImportButton() {
     const totalBytes = files.reduce((n, f) => n + (f.size || 0), 0)
     const est = await storageEstimate()
     if (est?.quota && est.usage + totalBytes > est.quota * 0.95) {
-      showToast("Not enough storage to import these. Free up space and try again.")
+      showToast('Not enough storage to import these. Free up space and try again.')
       return
     }
 
-    setRemaining(files.length)
+    setProgress({ done: 0, total: files.length })
+    // One timestamp per import, counting down in pick order, so "Recent"
+    // (newest first) still lists a series 1, 2, 3 rather than backwards.
+    const batchAt = Date.now()
     let added = 0
     let skipped = 0
     let failed = 0
     let outOfSpace = false
     const series = new Map() // artist → ids of numbered tracks from this import
-    for (const file of files) {
+    for (const [i, file] of files.entries()) {
       try {
         const { title, youtubeId } = parseFilename(file.name)
         let { artist } = parseFilename(file.name)
@@ -67,7 +71,9 @@ export default function ImportButton() {
           if (chan) artist = chan
         }
 
-        const { id, duplicate } = await addLocalTrack({ title, artist, duration, blob: file, thumbnailUrl, youtubeId })
+        const { id, duplicate } = await addLocalTrack({
+          title, artist, duration, blob: file, thumbnailUrl, youtubeId, dateAdded: batchAt - i,
+        })
         if (artist !== 'Imported' && seriesNumber(title) != null) {
           if (!series.has(artist)) series.set(artist, [])
           series.get(artist).push(id)
@@ -76,7 +82,7 @@ export default function ImportButton() {
           skipped++
           continue
         }
-        // Counted explicitly rather than derived — the out-of-space break below
+        // Counted explicitly rather than derived: the out-of-space break below
         // exits the loop early, which would make length arithmetic lie.
         added++
         // fetch lyrics in the background (cached for offline); don't block import
@@ -85,14 +91,14 @@ export default function ImportButton() {
         failed++
         if (err?.name === 'QuotaExceededError') {
           outOfSpace = true
-          break // storage is full — no point trying the rest
+          break // storage is full, no point trying the rest
         }
         console.error('import failed for', file.name, err)
       } finally {
-        setRemaining((n) => n - 1)
+        setProgress((p) => p && { ...p, done: p.done + 1 })
       }
     }
-    setRemaining(0)
+    setProgress(null)
 
     // Three or more numbered files from one show make (or extend) a playlist.
     const made = []
@@ -102,12 +108,12 @@ export default function ImportButton() {
       made.push(`Playlist “${name}” is ready, in order`)
     }
 
-    // Always leave a summary — a re-pick of the whole folder is a sync, and
+    // Always leave a summary: a re-pick of the whole folder is a sync, and
     // "nothing happened" must still be an answer, never a silent no-op.
     if (outOfSpace) {
-      showToast("Ran out of storage — not all tracks were imported.")
+      showToast('Ran out of storage. Not all tracks were imported.')
     } else if (added === 0 && failed === 0) {
-      showToast(['No new songs — everything already in your library.', ...made].join(' · '))
+      showToast(['No new songs, everything is already in your library', ...made].join(' · '))
     } else {
       const parts = [`${added} added`]
       if (skipped) parts.push(`${skipped} already in your library`)
@@ -116,37 +122,15 @@ export default function ImportButton() {
     }
   }
 
-  const busy = remaining > 0
-  return (
-    <>
-      <button
-        className="btn btn--ghost importbtn"
-        onClick={() => inputRef.current?.click()}
-        disabled={busy}
-      >
-        {busy ? <Spinner /> : <TrayIcon />}
-        {busy ? `Importing… (${remaining})` : 'Import'}
-      </button>
-      <input
-        ref={inputRef}
-        type="file"
-        accept="audio/*,.m4a,.mp3,.aac,.wav,.flac,.ogg"
-        multiple
-        hidden
-        onChange={onPick}
-      />
-    </>
+  const input = (
+    <input
+      ref={inputRef}
+      type="file"
+      accept="audio/*,.m4a,.mp3,.aac,.wav,.flac,.ogg"
+      multiple
+      hidden
+      onChange={onPick}
+    />
   )
-}
-
-function TrayIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 3v10m0 0l-4-4m4 4l4-4" />
-      <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
-    </svg>
-  )
-}
-function Spinner() {
-  return <span className="spinner" aria-hidden="true" />
+  return { input, open: () => inputRef.current?.click(), progress }
 }
