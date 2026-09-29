@@ -553,6 +553,9 @@ body {
   cursor: pointer; position: relative;
 }
 .loopbtn--all, .loopbtn--one { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); background: var(--accent-soft); }
+.now__pills { display: flex; gap: 10px; justify-content: center; }
+.speedbtn--on { border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); background: var(--accent-soft); }
+.speedbtn.speedbtn--on span { color: var(--accent); }
 .loopbtn__one {
   position: absolute; top: -3px; right: 8px;
   font-style: normal; font-size: 9px; font-weight: 800;

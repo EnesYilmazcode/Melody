@@ -10,7 +10,7 @@ export const usePlayer = () => useContext(PlayerContext)
 //   off → all (loop the whole queue/playlist) → one (loop this song) → off
 export const LOOP_MODES = ['off', 'all', 'one']
 
-// Podcast speeds, cycled by the speed pill. Music always plays at 1x.
+// Playback speeds, cycled by the speed pill. Applies to everything.
 export const SPEEDS = [1, 1.25, 1.5, 1.75, 2, 0.75]
 const SKIP_BACK = 15
 const SKIP_FORWARD = 30
@@ -61,12 +61,12 @@ export function PlayerProvider({ children }) {
   const current = index >= 0 ? queue[index] : null
   const longForm = isLongForm(current)
 
-  // Long-form plays at the chosen speed; music always at 1x. Safari resets
-  // playbackRate on every load, so this also runs from loadedmetadata.
+  // Everything plays at the chosen speed. Safari resets playbackRate on
+  // every load, so this also runs from loadedmetadata.
   const applyRate = useCallback(() => {
     const audio = audioRef.current
     if (!audio) return
-    const rate = isLongForm(loadedRef.current) ? speedRef.current : 1
+    const rate = speedRef.current
     audio.defaultPlaybackRate = rate
     audio.playbackRate = rate
   }, [])

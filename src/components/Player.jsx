@@ -132,11 +132,7 @@ function NowPlaying({ p, onClose }) {
         )}
       </div>
 
-      {p.longForm ? (
-        <button className="loopbtn speedbtn" onClick={p.cycleSpeed} aria-label={`Playback speed ${p.speed}x`}>
-          <span>{p.speed}×</span>
-        </button>
-      ) : (
+      <div className="now__pills">
         <button
           className={`loopbtn loopbtn--${p.loopMode}`}
           onClick={p.cycleLoop}
@@ -145,7 +141,10 @@ function NowPlaying({ p, onClose }) {
           <RepeatIcon /> <span>{loopLabel}</span>
           {p.loopMode === 'one' && <em className="loopbtn__one">1</em>}
         </button>
-      )}
+        <button className={`loopbtn speedbtn${p.speed !== 1 ? ' speedbtn--on' : ''}`} onClick={p.cycleSpeed} aria-label={`Playback speed ${p.speed}x`}>
+          <span>{p.speed}×</span>
+        </button>
+      </div>
     </div>
   )
 }
