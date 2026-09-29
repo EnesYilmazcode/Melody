@@ -1,4 +1,5 @@
-// Now Playing with the speed pill on a regular track. node scripts/shoot-speed.mjs
+// Now Playing's speed control applies to every track and survives a reload.
+// node scripts/shoot-speed.mjs
 import { chromium, devices } from 'playwright'
 import { createServer } from 'vite'
 import { resolve, dirname } from 'node:path'
@@ -18,10 +19,11 @@ try {
   await page.waitForTimeout(600)
   await page.locator('.mini').click()
   await page.waitForTimeout(600)
+  await page.getByLabel('More').click()
+  await page.waitForTimeout(500)
   await page.screenshot({ path: shot('15-speed-1x') })
 
-  await page.getByLabel(/Playback speed/).click() // 1.25
-  await page.getByLabel(/Playback speed/).click() // 1.5
+  await page.getByRole('radio', { name: '1.5x speed' }).click()
   await page.waitForTimeout(400)
   const rate = await page.evaluate(() => document.querySelector('audio').playbackRate)
   console.log('playbackRate on a regular track:', rate)
@@ -31,7 +33,7 @@ try {
   await page.waitForTimeout(800)
   await page.locator('.row__main').nth(1).click()
   await page.waitForTimeout(800)
-  console.log('after reload, pill says:', await page.locator('.mini').count() && await page.evaluate(() => localStorage.getItem('melody.speed')),
+  console.log('after reload, saved:', await page.evaluate(() => localStorage.getItem('melody.speed')),
     'rate:', await page.evaluate(() => document.querySelector('audio').playbackRate))
 } finally {
   await browser.close()

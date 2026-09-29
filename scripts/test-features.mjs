@@ -17,7 +17,7 @@ await page.waitForTimeout(700)
 
 // import a file whose name embeds a real video id (as our yt-dlp cmd produces)
 const buf = readFileSync(resolve(here, '../public/samples/sample-d.wav'))
-await page.locator('input[type=file]').setInputFiles({
+await page.locator('input[type=file][multiple]').setInputFiles({
   name: 'Test Song [dQw4w9WgXcQ].wav', mimeType: 'audio/wav', buffer: buf,
 })
 await page.waitForTimeout(1500)
@@ -31,8 +31,8 @@ await page.waitForTimeout(1500)
 await page.locator('.mini').click()
 await page.waitForTimeout(800)
 
-const fill = await page.locator(".scrub input[type='range']").evaluate((el) => el.style.background)
-console.log('scrubber fill:', fill ? fill.slice(0, 60) : '(none)')
+const fill = await page.locator('.scrub__track i').evaluate((el) => el.style.transform)
+console.log('scrubber fill:', fill || '(none)')
 
 // toggle lyrics
 await page.getByLabel('Lyrics').click()
