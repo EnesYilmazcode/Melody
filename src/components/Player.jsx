@@ -18,7 +18,7 @@ export default function Player() {
   const p = usePlayer()
   const [open, setOpen] = useState(false)
   const mini = useRef(null)
-  useSwipeUp(mini, () => setOpen(true))
+  useSwipeUp(mini, !!p.current, () => setOpen(true))
   if (!p.current) return null // nothing playing → no bar
 
   return (
@@ -61,7 +61,8 @@ export default function Player() {
 }
 
 // Swipe up on the mini player opens Now Playing; a tap still works via click.
-function useSwipeUp(ref, onOpen) {
+// Attached once per mount: progress re-renders must not reset a swipe midway.
+function useSwipeUp(ref, mounted, onOpen) {
   const cb = useRef(onOpen)
   cb.current = onOpen
   useEffect(() => {
@@ -88,7 +89,7 @@ function useSwipeUp(ref, onOpen) {
       el.removeEventListener('pointerup', up)
       el.removeEventListener('pointercancel', up)
     }
-  })
+  }, [ref, mounted])
 }
 
 // Page-behind recede: 1 = Now Playing fully up. Drives .app via --np.

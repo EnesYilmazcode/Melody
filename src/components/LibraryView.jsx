@@ -66,7 +66,7 @@ export default function LibraryView() {
       </div>
       {importer.progress && (
         <p className="importing" role="status">
-          Importing <span className="num">{importer.progress.done + 1}</span> of <span className="num">{importer.progress.total}</span>
+          Importing <span className="num">{Math.min(importer.progress.done + 1, importer.progress.total)}</span> of <span className="num">{importer.progress.total}</span>
           <span className="importing__bar"><i style={{ transform: `scaleX(${importer.progress.done / importer.progress.total})` }} /></span>
         </p>
       )}
