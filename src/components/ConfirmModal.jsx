@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom'
 import { useDialog } from '../lib/useDialog'
 
 // Destructive confirm dialog (e.g. delete a playlist) — replaces window.confirm.
@@ -10,7 +11,8 @@ export default function ConfirmModal({
 }) {
   const dialog = useDialog(onClose)
 
-  return (
+  // Portaled so it never inherits the page's Now Playing recede transform.
+  return createPortal(
     <div className="modal-overlay" onClick={onClose}>
       <div
         className="modal"
@@ -28,6 +30,7 @@ export default function ConfirmModal({
           <button type="button" className="btn btn--danger" onClick={onConfirm}>{confirmLabel}</button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
