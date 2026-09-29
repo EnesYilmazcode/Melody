@@ -14,6 +14,13 @@ export default function Sheet({ onClose, label, children }) {
   const onCloseRef = useRef(onClose)
   onCloseRef.current = onClose
   const dur = motionMs(380)
+  // Taps in the first moments belong to the gesture that opened the sheet
+  // (e.g. the finger lifting after a long-press), not to the sheet.
+  const openedAt = useRef(Date.now())
+  const tooSoon = () => Date.now() - openedAt.current < 350
+  const swallowEarly = (e) => {
+    if (tooSoon()) { e.preventDefault(); e.stopPropagation() }
+  }
 
   const slide = (to, ms = dur) => {
     const el = panel.current
@@ -48,11 +55,12 @@ export default function Sheet({ onClose, label, children }) {
 
   return createPortal(
     <>
-      <div className="sheet-overlay" ref={overlay} onClick={() => close()} />
+      <div className="sheet-overlay" ref={overlay} onClick={() => { if (!tooSoon()) close() }} />
       <div
         className="sheet"
         ref={(el) => { panel.current = el; dialog.ref.current = el }}
         onKeyDown={dialog.onKeyDown}
+        onClickCapture={swallowEarly}
         role="dialog"
         aria-modal="true"
         aria-label={label}
