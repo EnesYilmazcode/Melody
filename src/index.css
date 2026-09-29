@@ -369,6 +369,9 @@ svg { display: block; flex-shrink: 0; }
   margin-top: 18px; font-size: 24px; font-weight: 750; letter-spacing: -.02em; line-height: 1.15;
   text-wrap: balance; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
+/* The name hands off to the bar: never both at once. */
+.hero h1 { transition: opacity var(--dur-fade); }
+.navbar--scrolled + .hero h1 { opacity: 0; }
 .hero__meta { margin-top: 6px; color: var(--dim); font-size: 14.5px; }
 .hero__meta .num { font-size: 15px; }
 .hero + .btnrow { margin-bottom: 14px; }

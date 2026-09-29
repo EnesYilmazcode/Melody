@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { usePlaylists, useTracks } from '../state/useLibrary'
 import { createPlaylist, renamePlaylist, deletePlaylist } from '../lib/db'
 import { usePlayer } from '../state/PlayerProvider'
@@ -171,12 +171,19 @@ function PlaylistRow({ playlist, tracks, onOpen, onLongPress }) {
 function PlaylistDetail({ playlist, tracks, scrollRef, onBack, onActions }) {
   const { playQueue, current, isPlaying } = usePlayer()
   const [scrolled, setScrolled] = useState(false)
+  const bar = useRef(null)
+  const title = useRef(null)
 
-  // The compact bar shows the name once the big title scrolls away.
+  // The compact bar shows the name only once the big title is mostly under
+  // it, so a short playlist never shows the name twice.
   useEffect(() => {
     const el = scrollRef?.current
     if (!el) return
-    const on = () => setScrolled(el.scrollTop > 190)
+    const on = () => {
+      if (!bar.current || !title.current) return
+      const t = title.current.getBoundingClientRect()
+      setScrolled(t.top + t.height / 2 <= bar.current.getBoundingClientRect().bottom)
+    }
     on()
     el.addEventListener('scroll', on, { passive: true })
     return () => el.removeEventListener('scroll', on)
@@ -192,7 +199,7 @@ function PlaylistDetail({ playlist, tracks, scrollRef, onBack, onActions }) {
 
   return (
     <>
-      <div className={`navbar ${scrolled ? 'navbar--scrolled' : ''}`}>
+      <div ref={bar} className={`navbar ${scrolled ? 'navbar--scrolled' : ''}`}>
         <button className="iconbtn" onClick={onBack} aria-label="Back"><Icon name="back" size={24} /></button>
         <span className="navbar__title">{playlist.name}</span>
         <button className="iconbtn" onClick={onActions} aria-label="Playlist options"><Icon name="more" size={22} /></button>
@@ -200,7 +207,7 @@ function PlaylistDetail({ playlist, tracks, scrollRef, onBack, onActions }) {
 
       <div className="hero">
         <Mosaic tracks={tracks} size={200} />
-        <h1>{playlist.name}</h1>
+        <h1 ref={title}>{playlist.name}</h1>
         {tracks.length > 0 && <p className="hero__meta"><Meta tracks={tracks} /></p>}
       </div>
 
